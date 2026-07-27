@@ -1,3 +1,4 @@
 Trigger corrected OpenAlex search and parallel validation.
 PROSPERO: CRD420261461557
 No credential is stored here.
+Pull-request activation: 2026-07-27.
