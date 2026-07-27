@@ -1,0 +1,91 @@
+name: SRMA OpenAlex repair
+
+on:
+  push:
+    branches:
+      - openalex-repair-2026-07-27
+    paths:
+      - 'srma_openalex_repair/**'
+      - '.github/workflows/srma-openalex-repair.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-style-validation:
+    name: Local-style query and code validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile corrected runner
+        run: python -m py_compile srma_openalex_repair/run_openalex_repair.py
+      - name: Validate query construction without network
+        run: |
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          p = Path('srma_openalex_repair/run_openalex_repair.py')
+          spec = importlib.util.spec_from_file_location('oa', p)
+          mod = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+          assert len(mod.QUERIES) == 5
+          for group, query in mod.QUERIES.items():
+              assert '*' not in query, (group, 'wildcard remains')
+              assert len(query.encode('utf-8')) < 3500, (group, 'query too long')
+              assert 'Bangladesh' in query
+              assert 'child' in query or 'infant' in query
+          print('Validated groups:', ', '.join(mod.QUERIES))
+          PY
+      - name: Upload validation record
+        run: |
+          mkdir -p validation_output
+          printf 'status,queries,wildcards,per_page\npassed,5,0,100\n' > validation_output/openalex_query_validation.csv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenAlex-query-validation
+          path: validation_output/
+          if-no-files-found: error
+          retention-days: 30
+
+  openalex-search:
+    name: Corrected OpenAlex API search
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+      OPENALEX_MAILTO: st19009@mbstu.ac.bd
+      OPENALEX_OUT: openalex_repair_output
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check requests
+      - name: Execute all five corrected OpenAlex searches
+        run: python srma_openalex_repair/run_openalex_repair.py
+      - name: Verify complete query log
+        run: |
+          python - <<'PY'
+          import csv, json
+          rows = list(csv.DictReader(open('openalex_repair_output/openalex_search_log.csv', encoding='utf-8-sig')))
+          assert len(rows) == 5
+          assert all(row['Status'] == 'completed' for row in rows), rows
+          summary = json.load(open('openalex_repair_output/summary.json'))
+          assert summary['queries_completed'] == 5
+          assert summary['queries_failed'] == 0
+          assert summary['formal_screening_decisions'] == 0
+          print(json.dumps(summary, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SRMA-OpenAlex-Repair-Package
+          path: openalex_repair_output/
+          if-no-files-found: warn
+          retention-days: 30
