@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   local-style-validation:
@@ -90,3 +90,18 @@ jobs:
           path: openalex_repair_output/
           if-no-files-found: warn
           retention-days: 30
+      - name: Publish successful results to openalex-results branch
+        if: success()
+        run: |
+          cp -R openalex_repair_output /tmp/openalex_repair_output
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan openalex-results-tmp
+          git rm -rf .
+          mkdir -p openalex_repair_output
+          cp -R /tmp/openalex_repair_output/. openalex_repair_output/
+          printf 'source_commit,%s\ncompleted_utc,%s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > openalex_repair_output/workflow_provenance.csv
+          git add openalex_repair_output
+          git commit -m 'Publish completed OpenAlex repair search results'
+          git branch -M openalex-results
+          git push --force origin openalex-results
