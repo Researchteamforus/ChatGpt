@@ -6,6 +6,10 @@ on:
     paths:
       - 'srma_prep30/**'
       - '.github/workflows/srma-30-preparation-workstreams.yml'
+  pull_request:
+    paths:
+      - 'srma_prep30/**'
+      - '.github/workflows/srma-30-preparation-workstreams.yml'
 
 permissions:
   contents: read
