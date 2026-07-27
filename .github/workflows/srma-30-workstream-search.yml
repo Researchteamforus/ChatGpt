@@ -1,0 +1,81 @@
+name: SRMA 30-workstream prospective search
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'srma_search/**'
+      - '.github/workflows/srma-30-workstream-search.yml'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: '1'
+  NCBI_EMAIL: st19009@mbstu.ac.bd
+
+jobs:
+  search:
+    name: Workstream ${{ matrix.task }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        task: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: srma_search/requirements.txt
+      - name: Install dependencies
+        run: pip install -r srma_search/requirements.txt
+      - name: Execute prospective search workstream
+        shell: bash
+        run: |
+          set +e
+          python srma_search/search_worker.py --task "${{ matrix.task }}" --out outputs
+          echo "worker_exit=$?" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - name: Upload workstream artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: srma-task-${{ matrix.task }}
+          path: outputs/
+          if-no-files-found: error
+          retention-days: 30
+
+  consolidate:
+    name: Central QC and exact deduplication
+    needs: search
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: srma_search/requirements.txt
+      - name: Install dependencies
+        run: pip install -r srma_search/requirements.txt
+      - name: Download all workstream artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: srma-task-*
+          path: downloaded
+          merge-multiple: false
+      - name: Consolidate, audit, and package
+        run: python srma_search/consolidate.py
+      - name: Publish final search package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Prospective-Search-Package
+          path: |
+            SRMA_Prospective_Search_Package.zip
+            final_search_package/
+          if-no-files-found: error
+          retention-days: 30
