@@ -30,6 +30,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install validation dependency
+        run: python -m pip install --disable-pip-version-check requests
       - name: Validate runner and queries
         run: |
           python -m py_compile srma_openalex_repair/run_openalex_repair.py
