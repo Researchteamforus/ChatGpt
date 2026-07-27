@@ -1,0 +1,36 @@
+name: OpenAlex key availability check
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'srma_search/openalex_key_check_trigger.txt'
+      - '.github/workflows/openalex-key-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  key-check:
+    name: Check OpenAlex secret availability
+    runs-on: ubuntu-latest
+    env:
+      OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+    steps:
+      - name: Record availability without revealing value
+        run: |
+          mkdir -p key_check
+          if [ -n "$OPENALEX_API_KEY" ]; then
+            printf 'secret_name,available\nOPENALEX_API_KEY,yes\n' > key_check/status.csv
+            echo 'OPENALEX_API_KEY is available.'
+          else
+            printf 'secret_name,available\nOPENALEX_API_KEY,no\n' > key_check/status.csv
+            echo 'OPENALEX_API_KEY is not available.'
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenAlex-key-availability
+          path: key_check/status.csv
+          retention-days: 7
