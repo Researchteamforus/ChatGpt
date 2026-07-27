@@ -1,0 +1,49 @@
+name: SRMA single-runner 30-process search
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'srma_search/**'
+      - '.github/workflows/srma-single-runner-search.yml'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: '1'
+  NCBI_EMAIL: st19009@mbstu.ac.bd
+
+jobs:
+  execute-and-consolidate:
+    name: Execute 30 parallel search processes and consolidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: srma_search/requirements.txt
+      - name: Install dependencies
+        run: pip install -r srma_search/requirements.txt
+      - name: Execute all workstreams in parallel
+        shell: bash
+        run: |
+          mkdir -p downloaded/process-run
+          seq 1 30 | xargs -I{} -P 30 bash -c 'python srma_search/search_worker.py --task "$1" --out downloaded/process-run > "downloaded/process-run/task_${1}.stdout.log" 2>&1 || true' _ {}
+      - name: Consolidate, audit, and package
+        run: python srma_search/consolidate.py
+      - name: Publish final search package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Prospective-Search-Package-Single-Runner
+          path: |
+            SRMA_Prospective_Search_Package.zip
+            final_search_package/
+            downloaded/process-run/
+          if-no-files-found: error
+          retention-days: 30
