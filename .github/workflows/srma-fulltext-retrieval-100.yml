@@ -7,6 +7,12 @@ on:
     paths:
       - 'srma_fulltext_100/**'
       - '.github/workflows/srma-fulltext-retrieval-100.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'srma_fulltext_100/**'
+      - '.github/workflows/srma-fulltext-retrieval-100.yml'
   workflow_dispatch:
 
 jobs:
