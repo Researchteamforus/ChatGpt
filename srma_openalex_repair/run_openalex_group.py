@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import time
 from pathlib import Path
 
@@ -17,7 +16,6 @@ from run_openalex_repair import (
     QUERIES,
     canonical_record,
     now_iso,
-    request_page,
     sanitized_error,
     write_csv,
 )
@@ -29,6 +27,43 @@ TASK_IDS = {
     "determinants": 9,
     "programme": 10,
 }
+
+SELECT_FIELDS = ",".join([
+    "id", "display_name", "publication_year", "type", "language",
+    "cited_by_count", "relevance_score", "doi", "ids", "authorships",
+    "primary_location", "open_access", "abstract_inverted_index",
+])
+
+
+def request_page(session, query: str, cursor: str):
+    params = {
+        "search": query,
+        "per_page": 100,
+        "cursor": cursor,
+        "mailto": EMAIL,
+        "select": SELECT_FIELDS,
+    }
+    if API_KEY:
+        params["api_key"] = API_KEY
+    last_error: Exception | None = None
+    for attempt in range(1, 7):
+        try:
+            response = session.get("https://api.openalex.org/works", params=params, timeout=90)
+            if response.status_code in {400, 401, 403}:
+                response.raise_for_status()
+            if response.status_code in {429, 500, 502, 503, 504}:
+                wait = int(response.headers.get("Retry-After", min(60, 2 ** attempt)))
+                time.sleep(wait)
+                continue
+            response.raise_for_status()
+            return response
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            if status in {400, 401, 403}:
+                break
+            time.sleep(min(60, 2 ** attempt))
+    raise RuntimeError(sanitized_error(last_error or RuntimeError("unknown request failure")))
 
 
 def main() -> None:
