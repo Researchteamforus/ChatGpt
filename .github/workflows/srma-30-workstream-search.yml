@@ -99,7 +99,7 @@ jobs:
           git rm -rf .
           mkdir -p openalex_repair_output
           cp -R /tmp/openalex_repair_output/. openalex_repair_output/
-          printf 'source_commit,%s\ncompleted_utc,%s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > openalex_repair_output/workflow_provenance.csv
+          printf 'source_commit,%s\nrun_id,%s\nrun_attempt,%s\ncompleted_utc,%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > openalex_repair_output/workflow_provenance.csv
           git add openalex_repair_output
           git commit -m 'Publish completed OpenAlex repair search results'
           git branch -M openalex-results
