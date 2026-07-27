@@ -6,6 +6,12 @@ on:
     paths:
       - 'srma_search/**'
       - '.github/workflows/srma-30-workstream-search.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'srma_search/**'
+      - '.github/workflows/srma-30-workstream-search.yml'
 
 permissions:
   contents: read
