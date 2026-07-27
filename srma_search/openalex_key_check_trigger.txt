@@ -1,0 +1,1 @@
+Check whether OPENALEX_API_KEY is available to GitHub Actions without displaying its value.
