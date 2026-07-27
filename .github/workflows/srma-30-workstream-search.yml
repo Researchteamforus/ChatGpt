@@ -68,8 +68,17 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check requests
       - name: Execute all five corrected searches
+        id: execute
+        continue-on-error: true
         run: python srma_openalex_repair/run_openalex_repair.py
+      - name: Record execution status
+        if: always()
+        run: |
+          mkdir -p openalex_repair_output
+          printf 'step_outcome,%s\nstep_conclusion,%s\n' "${{ steps.execute.outcome }}" "${{ steps.execute.conclusion }}" > openalex_repair_output/execution_status.csv
       - name: Verify all searches completed
+        id: verify
+        continue-on-error: true
         run: |
           python - <<'PY'
           import csv, json
@@ -89,9 +98,13 @@ jobs:
           path: openalex_repair_output/
           if-no-files-found: warn
           retention-days: 30
-      - name: Publish completed results branch
-        if: success()
+      - name: Publish result or diagnostic branch
+        if: always()
+        env:
+          EXECUTE_OUTCOME: ${{ steps.execute.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
         run: |
+          mkdir -p openalex_repair_output
           cp -R openalex_repair_output /tmp/openalex_repair_output
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -99,8 +112,8 @@ jobs:
           git rm -rf .
           mkdir -p openalex_repair_output
           cp -R /tmp/openalex_repair_output/. openalex_repair_output/
-          printf 'source_commit,%s\nrun_id,%s\nrun_attempt,%s\ncompleted_utc,%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > openalex_repair_output/workflow_provenance.csv
+          printf 'source_commit,%s\nrun_id,%s\nrun_attempt,%s\nexecute_outcome,%s\nverify_outcome,%s\ncompleted_utc,%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$EXECUTE_OUTCOME" "$VERIFY_OUTCOME" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > openalex_repair_output/workflow_provenance.csv
           git add openalex_repair_output
-          git commit -m 'Publish completed OpenAlex repair search results'
+          git commit -m 'Publish OpenAlex repair search result or diagnostics'
           git branch -M openalex-results
           git push --force origin openalex-results
