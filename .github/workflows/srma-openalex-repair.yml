@@ -3,6 +3,7 @@ name: SRMA OpenAlex repair
 on:
   push:
     branches:
+      - main
       - openalex-repair-2026-07-27
     paths:
       - 'srma_openalex_repair/**'
