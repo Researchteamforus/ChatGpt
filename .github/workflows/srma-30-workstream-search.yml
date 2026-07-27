@@ -1,12 +1,7 @@
-name: SRMA OpenAlex repair via established runner
+name: SRMA OpenAlex five-group parallel repair
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'srma_openalex_repair/**'
-      - 'srma_search/openalex_repair_trigger.txt'
-      - '.github/workflows/srma-30-workstream-search.yml'
   pull_request:
     branches:
       - main
@@ -14,17 +9,34 @@ on:
       - 'srma_openalex_repair/**'
       - 'srma_search/openalex_repair_trigger.txt'
       - '.github/workflows/srma-30-workstream-search.yml'
-  schedule:
-    - cron: '*/5 * * * *'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  local-validation:
-    name: Validate corrected OpenAlex queries
+  key-check:
+    name: Check OpenAlex key availability
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    env:
+      OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+    steps:
+      - name: Record availability without revealing value
+        run: |
+          mkdir -p key_check
+          if [ -n "$OPENALEX_API_KEY" ]; then
+            printf 'secret_name,available\nOPENALEX_API_KEY,yes\n' > key_check/status.csv
+          else
+            printf 'secret_name,available\nOPENALEX_API_KEY,no\n' > key_check/status.csv
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenAlex-key-availability
+          path: key_check/status.csv
+          retention-days: 7
+
+  local-validation:
+    name: Validate corrected OpenAlex code and queries
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,25 +44,22 @@ jobs:
           python-version: '3.12'
       - name: Install validation dependency
         run: python -m pip install --disable-pip-version-check requests
-      - name: Validate runner and queries
+      - name: Validate code and query construction
         run: |
           python -m py_compile srma_openalex_repair/run_openalex_repair.py
-          python - <<'PY'
-          import importlib.util
-          from pathlib import Path
-          p = Path('srma_openalex_repair/run_openalex_repair.py')
-          spec = importlib.util.spec_from_file_location('oa', p)
-          mod = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(mod)
+          python -m py_compile srma_openalex_repair/run_openalex_group.py
+          python -m py_compile srma_openalex_repair/consolidate_openalex_groups.py
+          PYTHONPATH=srma_openalex_repair python - <<'PY'
+          import run_openalex_repair as mod
           assert len(mod.QUERIES) == 5
           for group, query in mod.QUERIES.items():
-              assert '*' not in query
-              assert len(query.encode('utf-8')) < 3500
+              assert '*' not in query, group
+              assert len(query.encode('utf-8')) < 3500, group
               assert 'Bangladesh' in query
               assert 'child' in query or 'infant' in query
           print('validated:', ', '.join(mod.QUERIES))
           PY
-      - name: Save validation output
+      - name: Save validation result
         run: |
           mkdir -p validation_output
           printf 'status,queries,wildcards,per_page\npassed,5,0,100\n' > validation_output/openalex_query_validation.csv
@@ -58,71 +67,82 @@ jobs:
         with:
           name: OpenAlex-query-validation
           path: validation_output/
-          if-no-files-found: error
           retention-days: 30
 
-  openalex-search:
-    name: Execute corrected OpenAlex API searches
+  search:
+    name: OpenAlex ${{ matrix.group }}
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        group: [coverage, timeliness, dropout, determinants, programme]
     env:
       OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
       OPENALEX_MAILTO: st19009@mbstu.ac.bd
-      OPENALEX_OUT: openalex_repair_output
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install dependencies
+      - name: Install dependency
         run: python -m pip install --disable-pip-version-check requests
-      - name: Execute all five corrected searches
+      - name: Execute full cursor search
         id: execute
         continue-on-error: true
-        run: python srma_openalex_repair/run_openalex_repair.py
-      - name: Record execution status
+        env:
+          GROUP: ${{ matrix.group }}
+        run: PYTHONPATH=srma_openalex_repair python srma_openalex_repair/run_openalex_group.py --group "$GROUP" --out "group_output/$GROUP"
+      - name: Record job outcome
         if: always()
+        env:
+          GROUP: ${{ matrix.group }}
+          OUTCOME: ${{ steps.execute.outcome }}
         run: |
-          mkdir -p openalex_repair_output
-          printf 'step_outcome,%s\nstep_conclusion,%s\n' "${{ steps.execute.outcome }}" "${{ steps.execute.conclusion }}" > openalex_repair_output/execution_status.csv
-      - name: Verify all searches completed
-        id: verify
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          import csv, json
-          rows = list(csv.DictReader(open('openalex_repair_output/openalex_search_log.csv', encoding='utf-8-sig')))
-          assert len(rows) == 5
-          assert all(row['Status'] == 'completed' for row in rows), rows
-          summary = json.load(open('openalex_repair_output/summary.json'))
-          assert summary['queries_completed'] == 5
-          assert summary['queries_failed'] == 0
-          assert summary['formal_screening_decisions'] == 0
-          print(json.dumps(summary, indent=2))
-          PY
+          mkdir -p "group_output/$GROUP"
+          printf 'group,step_outcome\n%s,%s\n' "$GROUP" "$OUTCOME" > "group_output/$GROUP/execution_status.csv"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SRMA-OpenAlex-Repair-Package
+          name: OpenAlex-${{ matrix.group }}
+          path: group_output/${{ matrix.group }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate and verify OpenAlex results
+    needs: [search, local-validation, key-check]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependency
+        run: python -m pip install --disable-pip-version-check requests
+      - name: Download all group artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: OpenAlex-*
+          path: downloaded
+          merge-multiple: false
+      - name: Consolidate exact-unique OpenAlex master
+        id: consolidate
+        continue-on-error: true
+        run: PYTHONPATH=srma_openalex_repair python srma_openalex_repair/consolidate_openalex_groups.py --input downloaded --out openalex_repair_output
+      - name: Save workflow provenance
+        if: always()
+        env:
+          CONSOLIDATE_OUTCOME: ${{ steps.consolidate.outcome }}
+        run: |
+          mkdir -p openalex_repair_output
+          printf 'source_commit,%s\nrun_id,%s\nrun_attempt,%s\nconsolidate_outcome,%s\ncompleted_utc,%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$CONSOLIDATE_OUTCOME" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > openalex_repair_output/workflow_provenance.csv
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SRMA-OpenAlex-Parallel-Repair-Package
           path: openalex_repair_output/
           if-no-files-found: warn
           retention-days: 30
-      - name: Publish result or diagnostic branch
-        if: always()
-        env:
-          EXECUTE_OUTCOME: ${{ steps.execute.outcome }}
-          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
-        run: |
-          mkdir -p openalex_repair_output
-          cp -R openalex_repair_output /tmp/openalex_repair_output
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git checkout --orphan openalex-results-tmp
-          git rm -rf .
-          mkdir -p openalex_repair_output
-          cp -R /tmp/openalex_repair_output/. openalex_repair_output/
-          printf 'source_commit,%s\nrun_id,%s\nrun_attempt,%s\nexecute_outcome,%s\nverify_outcome,%s\ncompleted_utc,%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$EXECUTE_OUTCOME" "$VERIFY_OUTCOME" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > openalex_repair_output/workflow_provenance.csv
-          git add openalex_repair_output
-          git commit -m 'Publish OpenAlex repair search result or diagnostics'
-          git branch -M openalex-results
-          git push --force origin openalex-results
