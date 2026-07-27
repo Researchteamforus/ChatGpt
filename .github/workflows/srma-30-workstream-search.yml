@@ -1,87 +1,106 @@
-name: SRMA 30-workstream prospective search
+name: SRMA OpenAlex repair via established runner
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'srma_search/**'
+      - 'srma_openalex_repair/**'
+      - 'srma_search/openalex_repair_trigger.txt'
       - '.github/workflows/srma-30-workstream-search.yml'
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'srma_search/**'
-      - '.github/workflows/srma-30-workstream-search.yml'
+  schedule:
+    - cron: '*/5 * * * *'
 
 permissions:
-  contents: read
-
-env:
-  PYTHONUNBUFFERED: '1'
-  NCBI_EMAIL: st19009@mbstu.ac.bd
+  contents: write
 
 jobs:
-  search:
-    name: Workstream ${{ matrix.task }}
+  local-validation:
+    name: Validate corrected OpenAlex queries
     runs-on: ubuntu-latest
-    continue-on-error: true
-    strategy:
-      fail-fast: false
-      max-parallel: 30
-      matrix:
-        task: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
-          cache-dependency-path: srma_search/requirements.txt
-      - name: Install dependencies
-        run: pip install -r srma_search/requirements.txt
-      - name: Execute prospective search workstream
-        shell: bash
+      - name: Validate runner and queries
         run: |
-          set +e
-          python srma_search/search_worker.py --task "${{ matrix.task }}" --out outputs
-          echo "worker_exit=$?" >> "$GITHUB_STEP_SUMMARY"
-          exit 0
-      - name: Upload workstream artifact
-        uses: actions/upload-artifact@v4
+          python -m py_compile srma_openalex_repair/run_openalex_repair.py
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          p = Path('srma_openalex_repair/run_openalex_repair.py')
+          spec = importlib.util.spec_from_file_location('oa', p)
+          mod = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+          assert len(mod.QUERIES) == 5
+          for group, query in mod.QUERIES.items():
+              assert '*' not in query
+              assert len(query.encode('utf-8')) < 3500
+              assert 'Bangladesh' in query
+              assert 'child' in query or 'infant' in query
+          print('validated:', ', '.join(mod.QUERIES))
+          PY
+      - name: Save validation output
+        run: |
+          mkdir -p validation_output
+          printf 'status,queries,wildcards,per_page\npassed,5,0,100\n' > validation_output/openalex_query_validation.csv
+      - uses: actions/upload-artifact@v4
         with:
-          name: srma-task-${{ matrix.task }}
-          path: outputs/
+          name: OpenAlex-query-validation
+          path: validation_output/
           if-no-files-found: error
           retention-days: 30
 
-  consolidate:
-    name: Central QC and exact deduplication
-    needs: search
-    if: always()
+  openalex-search:
+    name: Execute corrected OpenAlex API searches
     runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+      OPENALEX_MAILTO: st19009@mbstu.ac.bd
+      OPENALEX_OUT: openalex_repair_output
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
-          cache-dependency-path: srma_search/requirements.txt
       - name: Install dependencies
-        run: pip install -r srma_search/requirements.txt
-      - name: Download all workstream artifacts
-        uses: actions/download-artifact@v4
+        run: python -m pip install --disable-pip-version-check requests
+      - name: Execute all five corrected searches
+        run: python srma_openalex_repair/run_openalex_repair.py
+      - name: Verify all searches completed
+        run: |
+          python - <<'PY'
+          import csv, json
+          rows = list(csv.DictReader(open('openalex_repair_output/openalex_search_log.csv', encoding='utf-8-sig')))
+          assert len(rows) == 5
+          assert all(row['Status'] == 'completed' for row in rows), rows
+          summary = json.load(open('openalex_repair_output/summary.json'))
+          assert summary['queries_completed'] == 5
+          assert summary['queries_failed'] == 0
+          assert summary['formal_screening_decisions'] == 0
+          print(json.dumps(summary, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          pattern: srma-task-*
-          path: downloaded
-          merge-multiple: false
-      - name: Consolidate, audit, and package
-        run: python srma_search/consolidate.py
-      - name: Publish final search package
-        uses: actions/upload-artifact@v4
-        with:
-          name: SRMA-Prospective-Search-Package
-          path: |
-            SRMA_Prospective_Search_Package.zip
-            final_search_package/
-          if-no-files-found: error
+          name: SRMA-OpenAlex-Repair-Package
+          path: openalex_repair_output/
+          if-no-files-found: warn
           retention-days: 30
+      - name: Publish completed results branch
+        if: success()
+        run: |
+          cp -R openalex_repair_output /tmp/openalex_repair_output
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan openalex-results-tmp
+          git rm -rf .
+          mkdir -p openalex_repair_output
+          cp -R /tmp/openalex_repair_output/. openalex_repair_output/
+          printf 'source_commit,%s\ncompleted_utc,%s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > openalex_repair_output/workflow_provenance.csv
+          git add openalex_repair_output
+          git commit -m 'Publish completed OpenAlex repair search results'
+          git branch -M openalex-results
+          git push --force origin openalex-results
