@@ -8,6 +8,8 @@ on:
     paths:
       - 'srma_openalex_repair/**'
       - '.github/workflows/srma-openalex-repair.yml'
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
