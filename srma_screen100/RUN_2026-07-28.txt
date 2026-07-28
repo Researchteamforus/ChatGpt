@@ -1,0 +1,4 @@
+PROSPERO CRD420261461557
+Execution requested: 2026-07-28
+Scope: 100 computational agents for metadata enrichment, exact-identity duplicate QC, protocol-grounded provisional triage, and preparation of the human screening queue for the verified 1,129-record prospective-search master.
+Governance: This run does not constitute independent human screening or final eligibility assessment.
