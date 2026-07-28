@@ -1,0 +1,117 @@
+name: SRMA 100-Agent Metadata Enrichment and Provisional Triage
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'srma_screen100/**'
+      - '.github/workflows/srma-screen100-enrich.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare verified 1,129-record master
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download successful prospective-search artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Prospective-Search-Package-Single-Runner
+          path: source_search
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30237220022
+      - name: Locate and validate exact-deduplicated master
+        run: |
+          python - <<'PY'
+          import csv, hashlib
+          from pathlib import Path
+          files = list(Path('source_search').rglob('exact_deduplicated_master.csv'))
+          assert files, 'exact_deduplicated_master.csv not found'
+          src = max(files, key=lambda p: p.stat().st_size)
+          raw = src.read_bytes()
+          assert hashlib.sha256(raw).hexdigest() == 'ba1b05a4cfe39c4f0c8117299e3245c060a8f079902557f45e4d654ac3ee9320'
+          with src.open(encoding='utf-8-sig', newline='') as handle:
+              rows = list(csv.DictReader(handle))
+          assert len(rows) == 1129, len(rows)
+          ids = [r['Record_ID'] for r in rows]
+          assert len(set(ids)) == 1129
+          Path('prepared').mkdir()
+          Path('prepared/master_1129.csv').write_bytes(raw)
+          print('Validated', len(rows), 'unique records')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCREEN100-Verified-Master
+          path: prepared/master_1129.csv
+          retention-days: 7
+
+  agents:
+    name: SCREEN100-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 100
+      matrix:
+        agent: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install enrichment dependency
+        run: python -m pip install --disable-pip-version-check requests
+      - name: Download verified master
+        uses: actions/download-artifact@v4
+        with:
+          name: SCREEN100-Verified-Master
+          path: work
+      - name: Enrich metadata and prepare provisional queue segment
+        run: |
+          PYTHONPATH=. python srma_screen100/agent.py \
+            --agent '${{ matrix.agent }}' \
+            --input work/master_1129.csv \
+            --out agent_output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SCREEN100-Agent-${{ matrix.agent }}
+          path: agent_output/
+          if-no-files-found: error
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate 100-agent screening-preparation package
+    needs: agents
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download all agent artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: SCREEN100-Agent-*
+          path: downloaded
+          merge-multiple: false
+      - name: Verify and consolidate
+        run: |
+          python srma_screen100/consolidate.py \
+            --input downloaded \
+            --out consolidated
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-SCREEN100-Enrichment-and-Provisional-Triage
+          path: consolidated/
+          if-no-files-found: error
+          retention-days: 30
