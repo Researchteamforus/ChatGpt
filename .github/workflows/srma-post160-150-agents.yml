@@ -1,0 +1,300 @@
+name: SRMA 150-Agent Post-160 Enrichment Acquisition and QA
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - srma-final-master-160-agents-20260729
+    paths:
+      - 'srma_post160_150/**'
+      - '.github/workflows/srma-post160-150-agents.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare verified post-160 workstream shards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download successful 160-agent package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Final-Master-160-Agent-Package
+          path: source
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30425412072
+      - name: Validate code and create workstream shards
+        run: |
+          python -m py_compile srma_post160_150/agent.py
+          python srma_post160_150/agent.py prepare --input source --out prepared
+      - name: Upload metadata shards
+        uses: actions/upload-artifact@v4
+        with:
+          name: POST160-Metadata-Input
+          path: prepared/metadata_shards/
+          retention-days: 7
+      - name: Upload duplicate shards
+        uses: actions/upload-artifact@v4
+        with:
+          name: POST160-Duplicate-Input
+          path: prepared/duplicate_shards/
+          retention-days: 7
+      - name: Upload retrieval shards
+        uses: actions/upload-artifact@v4
+        with:
+          name: POST160-Retrieval-Input
+          path: prepared/retrieval_shards/
+          retention-days: 7
+      - name: Upload topic shards
+        uses: actions/upload-artifact@v4
+        with:
+          name: POST160-Topic-Input
+          path: prepared/topic_shards/
+          retention-days: 7
+      - name: Upload PRISMA shards
+        uses: actions/upload-artifact@v4
+        with:
+          name: POST160-PRISMA-Input
+          path: prepared/prisma_shards/
+          retention-days: 7
+      - name: Upload calibration shards
+        uses: actions/upload-artifact@v4
+        with:
+          name: POST160-Calibration-Input
+          path: prepared/calibration_shards/
+          retention-days: 7
+      - name: Upload preparation audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: POST160-Preparation-Audit
+          path: prepared/prepare_summary.json
+          retention-days: 30
+
+  metadata:
+    name: METADATA-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 50
+      matrix:
+        agent: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check requests
+      - uses: actions/download-artifact@v4
+        with:
+          name: POST160-Metadata-Input
+          path: input
+      - name: Enrich review-pool metadata and abstracts
+        run: python srma_post160_150/agent.py metadata-agent --agent '${{ matrix.agent }}' --input input --out output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: POST160-Metadata-${{ matrix.agent }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  duplicate:
+    name: DUPLICATE-QC-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: POST160-Duplicate-Input
+          path: input
+      - name: Prepare duplicate-family evidence
+        run: python srma_post160_150/agent.py duplicate-agent --agent '${{ matrix.agent }}' --input input --out output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: POST160-Duplicate-${{ matrix.agent }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  retrieval:
+    name: OPEN-PDF-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check requests
+      - uses: actions/download-artifact@v4
+        with:
+          name: POST160-Retrieval-Input
+          path: input
+      - name: Acquire verified lawful open PDFs
+        run: python srma_post160_150/agent.py retrieval-agent --agent '${{ matrix.agent }}' --input input --out output
+      - name: Upload retrieval manifest
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: POST160-Retrieval-Manifest-${{ matrix.agent }}
+          path: |
+            output/retrieval_manifest_*.csv
+            output/summary.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload retrieved PDF bytes separately
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: POST160-Retrieved-PDFs-${{ matrix.agent }}
+          path: output/pdfs/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  topic:
+    name: TOPIC-DESIGN-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: POST160-Topic-Input
+          path: input
+      - name: Map outcome topics and design hints
+        run: python srma_post160_150/agent.py topic-agent --agent '${{ matrix.agent }}' --input input --out output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: POST160-Topic-${{ matrix.agent }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  prisma:
+    name: PRISMA-QA-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: POST160-PRISMA-Input
+          path: input
+      - name: Audit identification records and search units
+        run: python srma_post160_150/agent.py prisma-agent --agent '${{ matrix.agent }}' --input input --out output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: POST160-PRISMA-${{ matrix.agent }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  calibration:
+    name: CALIBRATION-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: POST160-Calibration-Input
+          path: input
+      - name: Prepare blinded reviewer calibration batches
+        run: python srma_post160_150/agent.py calibration-agent --agent '${{ matrix.agent }}' --input input --out output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: POST160-Calibration-${{ matrix.agent }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate 150-agent post-160 package
+    needs: [metadata, duplicate, retrieval, topic, prisma, calibration]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download metadata outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-Metadata-*
+          path: downloaded/metadata
+          merge-multiple: false
+      - name: Download duplicate outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-Duplicate-*
+          path: downloaded/duplicate
+          merge-multiple: false
+      - name: Download retrieval manifests without PDF bytes
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-Retrieval-Manifest-*
+          path: downloaded/retrieval
+          merge-multiple: false
+      - name: Download topic outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-Topic-*
+          path: downloaded/topic
+          merge-multiple: false
+      - name: Download PRISMA outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-PRISMA-*
+          path: downloaded/prisma
+          merge-multiple: false
+      - name: Download calibration outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-Calibration-*
+          path: downloaded/calibration
+          merge-multiple: false
+      - name: Verify and consolidate
+        run: python srma_post160_150/agent.py consolidate --input downloaded --out consolidated
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Post160-150-Agent-Package
+          path: consolidated/
+          if-no-files-found: error
+          retention-days: 30
