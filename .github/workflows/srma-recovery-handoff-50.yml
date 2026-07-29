@@ -1,0 +1,260 @@
+name: SRMA 50-Agent Recovery and Reviewer Handoff
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - srma-screening-execution-40-agents-20260729
+    paths:
+      - 'srma_recovery_handoff/**'
+      - '.github/workflows/srma-recovery-handoff-50.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare verified recovery and handoff inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download verified final-160 package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Final-Master-160-Agent-Package
+          path: inputs/final160
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30425412072
+      - name: Download successful screening-execution package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Screening-Execution-40-Agent-Package
+          path: inputs/screen40
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30429891243
+      - name: Download successful manuscript-readiness package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Manuscript-Readiness-100-Agent-Package
+          path: inputs/ready100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30428691516
+      - name: Recover successful post-160 metadata outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-Metadata-*
+          path: inputs/partial150/metadata
+          merge-multiple: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30428312781
+      - name: Recover successful post-160 duplicate outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-Duplicate-*
+          path: inputs/partial150/duplicate
+          merge-multiple: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30428312781
+      - name: Recover retrieval manifests without PDF bytes
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-Retrieval-Manifest-*
+          path: inputs/partial150/retrieval
+          merge-multiple: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30428312781
+      - name: Recover topic and design outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-Topic-*
+          path: inputs/partial150/topic
+          merge-multiple: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30428312781
+      - name: Recover PRISMA QA outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-PRISMA-*
+          path: inputs/partial150/prisma
+          merge-multiple: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30428312781
+      - name: Recover calibration outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: POST160-Calibration-*
+          path: inputs/partial150/calibration
+          merge-multiple: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30428312781
+      - name: Recover successful submission-QA outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: SUBQA60-*
+          path: inputs/partial60
+          merge-multiple: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30429431650
+      - name: Validate code and create 50-agent shards
+        run: |
+          python -m py_compile srma_recovery_handoff/recovery_handoff.py
+          python srma_recovery_handoff/recovery_handoff.py prepare \
+            --final160 inputs/final160 \
+            --screen40 inputs/screen40 \
+            --ready100 inputs/ready100 \
+            --partial150 inputs/partial150 \
+            --partial60 inputs/partial60 \
+            --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RH50-Prepared
+          path: prepared
+          retention-days: 14
+
+  recovery:
+    name: RECOVERY-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RH50-Prepared
+          path: prepared
+      - run: python srma_recovery_handoff/recovery_handoff.py recovery-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RH50-Recovery-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  handoff:
+    name: HANDOFF-QA-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RH50-Prepared
+          path: prepared
+      - run: python srma_recovery_handoff/recovery_handoff.py handoff-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RH50-Handoff-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  ingestion:
+    name: INGESTION-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RH50-Prepared
+          path: prepared
+      - run: python srma_recovery_handoff/recovery_handoff.py ingestion-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RH50-Ingestion-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  fulltext:
+    name: FULLTEXT-READY-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RH50-Prepared
+          path: prepared
+      - run: python srma_recovery_handoff/recovery_handoff.py fulltext-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RH50-Fulltext-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  freeze:
+    name: FREEZE-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RH50-Prepared
+          path: prepared
+      - run: python srma_recovery_handoff/recovery_handoff.py freeze-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RH50-Freeze-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate recovery and reviewer-handoff package
+    needs: [recovery, handoff, ingestion, fulltext, freeze]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: RH50-*
+          path: all_outputs
+          merge-multiple: true
+      - run: python srma_recovery_handoff/recovery_handoff.py consolidate --input all_outputs --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Recovery-Handoff-50-Agent-Package
+          path: final_package
+          retention-days: 30
