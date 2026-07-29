@@ -1,0 +1,93 @@
+name: SRMA 60-Agent Reviewer Control and Scheduling
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'srma_reviewer_control60/**'
+      - '.github/workflows/srma-reviewer-control-60.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Download verified reviewer and recovery packages
+        run: |
+          mkdir -p source/a source/b source/c
+          gh run download 30429891243 -n SRMA-Screening-Execution-40-Agent-Package -D source/a
+          gh run download 30431125933 -n SRMA-Recovery-Handoff-50-Agent-Package -D source/b
+          gh run download 30431582607 -n SRMA-Bottleneck-Resolution-70-Agent-Package -D source/c
+        env: {GH_TOKEN: '${{ github.token }}'}
+      - run: python -m py_compile srma_reviewer_control60/agent.py && python srma_reviewer_control60/agent.py prepare --input source --out prepared
+      - uses: actions/upload-artifact@v4
+        with: {name: RC60-Prepared, path: prepared, retention-days: 30}
+  calibration:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy: {fail-fast: false, matrix: {agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: RC60-Prepared, path: prepared}
+      - run: python srma_reviewer_control60/agent.py calibration-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with: {name: 'RC60-Calibration-${{ matrix.agent }}', path: output}
+  workload:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy: {fail-fast: false, matrix: {agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: RC60-Prepared, path: prepared}
+      - run: python srma_reviewer_control60/agent.py workload-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with: {name: 'RC60-Workload-${{ matrix.agent }}', path: output}
+  schema:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy: {fail-fast: false, matrix: {agent: [1,2,3,4,5,6,7,8,9,10]}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: RC60-Prepared, path: prepared}
+      - run: python srma_reviewer_control60/agent.py schema-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with: {name: 'RC60-Schema-${{ matrix.agent }}', path: output}
+  adjudication:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy: {fail-fast: false, matrix: {agent: [1,2,3,4,5,6,7,8,9,10]}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: RC60-Prepared, path: prepared}
+      - run: python srma_reviewer_control60/agent.py adjudication-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with: {name: 'RC60-Adjudication-${{ matrix.agent }}', path: output}
+  fulltext:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy: {fail-fast: false, matrix: {agent: [1,2,3,4,5,6,7,8,9,10]}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: RC60-Prepared, path: prepared}
+      - run: python srma_reviewer_control60/agent.py fulltext-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with: {name: 'RC60-Fulltext-${{ matrix.agent }}', path: output}
+  consolidate:
+    needs: [calibration,workload,schema,adjudication,fulltext]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {pattern: 'RC60-*', path: all, merge-multiple: false}
+      - run: python srma_reviewer_control60/agent.py consolidate --input all --out final
+      - uses: actions/upload-artifact@v4
+        with: {name: SRMA-Reviewer-Control-60-Agent-Package, path: final, retention-days: 30}
