@@ -1,0 +1,129 @@
+name: SRMA 45-Agent Downstream Evidence and Retrieval
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, srma-next-parallel-20260729]
+    paths:
+      - 'srma_downstream51/**'
+      - '.github/workflows/srma-downstream-45.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  fulltext:
+    name: FULLTEXT-${{ matrix.agent }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check pypdf
+      - name: Download 65-agent linkage package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Parallel-Next-Stage-Package
+          path: next_stage
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30419617586
+      - name: Download consolidated PDFs
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-PDF-1000-Consolidated
+          path: pdf_source
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30345089066
+      - name: Extract protocol evidence without eligibility decisions
+        run: python srma_downstream51/worker.py fulltext --agent '${{ matrix.agent }}' --next next_stage --pdf pdf_source --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DOWNSTREAM-FULLTEXT-${{ matrix.agent }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  retrieval:
+    name: RETRIEVAL-${{ matrix.agent }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check requests
+      - uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Parallel-Next-Stage-Package
+          path: next_stage
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30419617586
+      - name: Retry Europe PMC, Unpaywall, and OpenAlex routes
+        run: python srma_downstream51/worker.py retrieval --agent '${{ matrix.agent }}' --next next_stage --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DOWNSTREAM-RETRIEVAL-${{ matrix.agent }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  exclusion-sensitivity:
+    name: EXCLUSION-SENSITIVITY-${{ matrix.agent }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SRMA-SCREEN100-Enrichment-and-Provisional-Triage
+          path: screen_source
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30347146120
+      - name: Run liberal false-negative sensitivity audit
+        run: python srma_downstream51/worker.py exclusion --agent '${{ matrix.agent }}' --screen screen_source --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DOWNSTREAM-EXCLUSION-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate downstream package
+    needs: [fulltext, retrieval, exclusion-sensitivity]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: DOWNSTREAM-*
+          path: all_outputs
+      - name: Consolidate and create blank human forms
+        run: python srma_downstream51/worker.py consolidate --input all_outputs --out final
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-45-Agent-Downstream-Package
+          path: final/
+          if-no-files-found: error
+          retention-days: 30
