@@ -1,0 +1,204 @@
+name: SRMA 90-Agent Dual AI Provisional Screening
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - srma-handoff-evidence-intake-90-agents-20260729
+    paths:
+      - 'srma_dual_ai90/**'
+      - '.github/workflows/srma-dual-ai-screening-90.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare verified reviewer batches
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download successful calibration-screening launch package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Calibration-Screening-Launch-100-Agent-Package
+          path: source/launch100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30437942079
+      - name: Compile and prepare inputs
+        run: |
+          python -m py_compile srma_dual_ai90/dual_agent_screening.py
+          python srma_dual_ai90/dual_agent_screening.py prepare --input source --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DA90-Prepared
+          path: prepared/
+          retention-days: 30
+
+  calibration_agents:
+    name: CAL-${{ matrix.profile }}-${{ matrix.batch }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        profile: [kapashia, mizan]
+        batch: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: DA90-Prepared
+          path: prepared
+      - run: python srma_dual_ai90/dual_agent_screening.py screen --prepared prepared --out output --group calibration --profile '${{ matrix.profile }}' --batch '${{ matrix.batch }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DA90-calibration-${{ matrix.batch }}-${{ matrix.profile }}
+          path: output/
+          retention-days: 30
+
+  calibration_compare:
+    name: CAL-COMPARE-${{ matrix.batch }}
+    needs: calibration_agents
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        batch: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: DA90-calibration-${{ matrix.batch }}-kapashia
+          path: input/kapashia
+      - uses: actions/download-artifact@v4
+        with:
+          name: DA90-calibration-${{ matrix.batch }}-mizan
+          path: input/mizan
+      - run: python srma_dual_ai90/dual_agent_screening.py compare --input input --out output --group calibration --batch '${{ matrix.batch }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DA90-calibration-compare-${{ matrix.batch }}
+          path: output/
+          retention-days: 30
+
+  gate1:
+    name: Assert calibration AI integrity
+    needs: calibration_compare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: DA90-calibration-compare-*
+          path: input
+          merge-multiple: false
+      - run: python srma_dual_ai90/dual_agent_screening.py gate --input input --out gate1 --groups calibration
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DA90-Gate1-Calibration-Passed
+          path: gate1/
+          retention-days: 30
+
+  main_supp_agents:
+    name: ${{ matrix.group }}-${{ matrix.profile }}-${{ matrix.batch }}
+    needs: gate1
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 40
+      matrix:
+        group: [main, supplementary]
+        profile: [kapashia, mizan]
+        batch: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: DA90-Prepared
+          path: prepared
+      - run: python srma_dual_ai90/dual_agent_screening.py screen --prepared prepared --out output --group '${{ matrix.group }}' --profile '${{ matrix.profile }}' --batch '${{ matrix.batch }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DA90-${{ matrix.group }}-${{ matrix.batch }}-${{ matrix.profile }}
+          path: output/
+          retention-days: 30
+
+  main_supp_compare:
+    name: COMPARE-${{ matrix.group }}-${{ matrix.batch }}
+    needs: main_supp_agents
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        group: [main, supplementary]
+        batch: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: DA90-${{ matrix.group }}-${{ matrix.batch }}-kapashia
+          path: input/kapashia
+      - uses: actions/download-artifact@v4
+        with:
+          name: DA90-${{ matrix.group }}-${{ matrix.batch }}-mizan
+          path: input/mizan
+      - run: python srma_dual_ai90/dual_agent_screening.py compare --input input --out output --group '${{ matrix.group }}' --batch '${{ matrix.batch }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DA90-${{ matrix.group }}-compare-${{ matrix.batch }}
+          path: output/
+          retention-days: 30
+
+  gate2:
+    name: Assert main and supplementary AI integrity
+    needs: main_supp_compare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: DA90-main-compare-*
+          path: input/main
+          merge-multiple: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: DA90-supplementary-compare-*
+          path: input/supplementary
+          merge-multiple: false
+      - run: python srma_dual_ai90/dual_agent_screening.py gate --input input --out gate2 --groups main,supplementary
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DA90-Gate2-Main-Supplementary-Passed
+          path: gate2/
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate dual AI human-verification package
+    needs: [gate1, gate2]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: DA90-Gate1-Calibration-Passed
+          path: input/gate1
+      - uses: actions/download-artifact@v4
+        with:
+          name: DA90-Gate2-Main-Supplementary-Passed
+          path: input/gate2
+      - run: python srma_dual_ai90/dual_agent_screening.py consolidate --input input --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Dual-AI-Provisional-Screening-90-Agent-Package
+          path: final_package/
+          if-no-files-found: error
+          retention-days: 30
