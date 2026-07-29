@@ -1,0 +1,224 @@
+name: SRMA 160-Agent Final Master and Reviewer Preparation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - srma-downstream-131-agents-20260729
+    paths:
+      - 'srma_final_master/**'
+      - '.github/workflows/srma-final-master-160.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare verified final-search and downstream inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download completed OpenAlex package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-OpenAlex-Final-Completed-Package
+          path: source/openalex
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30423373920
+      - name: Download prior 1,129-record screening-preparation package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-SCREEN100-Enrichment-and-Provisional-Triage
+          path: source/screen
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30347146120
+      - name: Download downstream evidence package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-45-Agent-Downstream-Package
+          path: source/downstream
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30423373926
+      - name: Validate and shard inputs
+        run: python srma_final_master/final_master.py prepare --oa source/openalex --screen source/screen --downstream source/downstream --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FM160-Prepared
+          path: prepared/
+          retention-days: 30
+
+  triage:
+    name: NEW-TRIAGE-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 100
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FM160-Prepared
+          path: prepared
+      - run: python srma_final_master/final_master.py triage-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FM160-Triage-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  search-qa:
+    name: SEARCH-QA-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FM160-Prepared
+          path: prepared
+      - run: python srma_final_master/final_master.py qa-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FM160-QA-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  fulltext-batches:
+    name: FULLTEXT-BATCH-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FM160-Prepared
+          path: prepared
+      - run: python srma_final_master/final_master.py fulltext-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FM160-Fulltext-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  consolidate-triage:
+    name: Consolidate 100-agent new-record triage
+    needs: triage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FM160-Triage-*
+          path: triage
+      - uses: actions/download-artifact@v4
+        with:
+          name: FM160-Prepared
+          path: prepared
+      - run: python srma_final_master/final_master.py consolidate-triage --input triage --prepared prepared --out consolidated
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FM160-Triage-Consolidated
+          path: consolidated/
+          retention-days: 30
+
+  reviewer-batches:
+    name: REVIEW-BATCH-${{ matrix.agent }}
+    needs: consolidate-triage
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FM160-Triage-Consolidated
+          path: consolidated
+      - run: python srma_final_master/final_master.py review-agent --agent '${{ matrix.agent }}' --input consolidated --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FM160-Review-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  retrieval:
+    name: NEW-RETRIEVAL-${{ matrix.agent }}
+    needs: consolidate-triage
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check requests
+      - uses: actions/download-artifact@v4
+        with:
+          name: FM160-Triage-Consolidated
+          path: consolidated
+      - run: python srma_final_master/final_master.py retrieval-agent --agent '${{ matrix.agent }}' --input consolidated --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FM160-Retrieval-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  final-package:
+    name: Consolidate final-master preparation package
+    needs: [reviewer-batches, retrieval, search-qa, fulltext-batches]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FM160-Review-*
+          path: all
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FM160-Retrieval-*
+          path: all
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FM160-QA-*
+          path: all
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FM160-Fulltext-*
+          path: all
+      - uses: actions/download-artifact@v4
+        with:
+          name: FM160-Triage-Consolidated
+          path: triage
+      - run: python srma_final_master/final_master.py final-consolidate --input all --triage triage --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Final-Master-160-Agent-Package
+          path: final_package/
+          retention-days: 30
