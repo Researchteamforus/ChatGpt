@@ -1,0 +1,134 @@
+name: SRMA OpenAlex Six Single-Year Completion Agents
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, srma-next-parallel-20260729]
+    paths:
+      - '.github/workflows/srma-openalex-repair6.yml'
+      - 'srma_openalex_bounded/**'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  repair:
+    name: OA-${{ matrix.group }}-${{ matrix.year }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - {group: determinants, year: 2021}
+          - {group: determinants, year: 2022}
+          - {group: determinants, year: 2023}
+          - {group: determinants, year: 2024}
+          - {group: programme, year: 2023}
+          - {group: programme, year: 2024}
+    env:
+      OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+      OPENALEX_MAILTO: st19009@mbstu.ac.bd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check requests
+      - name: Run single-year full cursor search
+        run: |
+          python srma_openalex_bounded/openalex_bounded.py run \
+            --group '${{ matrix.group }}' \
+            --start '${{ matrix.year }}' --end '${{ matrix.year }}' \
+            --out 'output/${{ matrix.group }}_${{ matrix.year }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: OA-REPAIR-${{ matrix.group }}-${{ matrix.year }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  consolidate:
+    name: Verify and merge completed OpenAlex package
+    needs: repair
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download prior 55-agent diagnostic package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-OpenAlex-55-Agent-Bounded-Package
+          path: prior
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30419617605
+      - name: Download six repair artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: OA-REPAIR-*
+          path: repairs
+      - name: Download verified 1,129-record master
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Prospective-Search-Package-Single-Runner
+          path: master
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30237220022
+      - name: Exact-consolidate and create new-record queue
+        run: |
+          python - <<'PY'
+          import csv,json,re,unicodedata
+          from collections import defaultdict
+          from datetime import datetime,timezone
+          from pathlib import Path
+          def rd(p):
+              with p.open(encoding='utf-8-sig',newline='') as f:return list(csv.DictReader(f))
+          def wr(p,rows,fields=None):
+              rows=list(rows); p.parent.mkdir(parents=True,exist_ok=True); fields=fields or (list(rows[0]) if rows else [])
+              with p.open('w',encoding='utf-8-sig',newline='') as f:
+                  w=csv.DictWriter(f,fieldnames=fields,extrasaction='ignore'); w.writeheader(); w.writerows({k:r.get(k,'') for k in fields} for r in rows)
+          def one(root,name):
+              h=list(Path(root).rglob(name)); assert h,name; return max(h,key=lambda p:p.stat().st_size)
+          def nt(v):return re.sub(r'\s+',' ',str(v or '')).strip()
+          def doi(v):
+              x=nt(v).lower(); x=re.sub(r'^https?://(?:dx\.)?doi\.org/','',x); x=re.sub(r'^doi:\s*','',x); return x.rstrip('.,; )]')
+          def title(v):
+              x=unicodedata.normalize('NFKD',nt(v)).encode('ascii','ignore').decode().lower(); return re.sub(r'[^a-z0-9]+',' ',x).strip()
+          def oakey(r):return 'openalex:'+nt(r.get('Source_ID')).lower() if nt(r.get('Source_ID')) else ('doi:'+doi(r.get('DOI')) if doi(r.get('DOI')) else 'title:'+title(r.get('Title'))+'|'+nt(r.get('Year')))
+          def cross(r):return 'doi:'+doi(r.get('DOI')) if doi(r.get('DOI')) else ('pmid:'+re.sub(r'\D','',nt(r.get('PMID'))) if nt(r.get('PMID')) else 'title:'+title(r.get('Title'))+'|'+nt(r.get('Year')))
+          prior=rd(one('prior','openalex_bounded_exact_unique.csv')); plogs=rd(one('prior','openalex_bounded_search_log.csv'))
+          repairs=[]; rlogs=[]
+          for p in Path('repairs').rglob('records.csv'):repairs+=rd(p)
+          for p in Path('repairs').rglob('search_log.csv'):rlogs+=rd(p)
+          expected={(g,f'{y}-{y}') for g,ys in [('determinants',[2021,2022,2023,2024]),('programme',[2023,2024])] for y in ys}
+          got={(x.get('Group'),x.get('Year_Band')) for x in rlogs if x.get('Status')=='completed'}
+          assert got==expected,(got,expected)
+          unique={}; prov=defaultdict(set); dups=[]
+          for r in prior+repairs:
+              k=oakey(r); prov[k].add(nt(r.get('Query_Group')))
+              if k not in unique:unique[k]=dict(r)
+              else:
+                  dups.append({'Exact_Key':k,'Kept_Record_ID':unique[k].get('Record_ID',''),'Removed_Record_ID':r.get('Record_ID',''),'Title':r.get('Title','')})
+                  if len(nt(r.get('Abstract')))>len(nt(unique[k].get('Abstract'))):unique[k]=dict(r)
+          rows=list(unique.values())
+          for r in rows:r['Query_Group']='; '.join(sorted(x for x in prov[oakey(r)] if x))
+          master=rd(one('master','exact_deduplicated_master.csv')); mkeys={cross(r):r for r in master}; overlap=[]; new=[]
+          for r in rows:
+              k=cross(r)
+              if k in mkeys:overlap.append({'Exact_Key':k,'Existing_Record_ID':mkeys[k].get('Record_ID',''),'OpenAlex_Record_ID':r.get('Record_ID',''),'Title':r.get('Title','')})
+              else:new.append(r)
+          out=Path('final'); fields=list(rows[0]); wr(out/'openalex_final_exact_unique.csv',rows,fields); wr(out/'openalex_final_duplicates.csv',dups); wr(out/'openalex_overlap_existing_master.csv',overlap); wr(out/'openalex_new_records_for_machine_triage.csv',new,fields)
+          completed=[x for x in plogs if x.get('Status')=='completed']+rlogs; wr(out/'openalex_final_search_log.csv',completed,list(completed[0]))
+          summary={'prospero':'CRD420261461557','prior_agents_completed':sum(x.get('Status')=='completed' for x in plogs),'single_year_repairs_completed':len(rlogs),'final_search_units_completed':len(completed),'exact_unique_records':len(rows),'overlap_existing_master':len(overlap),'new_records_awaiting_machine_triage':len(new),'formal_screening_decisions':0,'completed_utc':datetime.now(timezone.utc).isoformat()}
+          (out/'summary.json').write_text(json.dumps(summary,indent=2)); (out/'README.md').write_text('Search discovery and exact deduplication only; no human screening decisions are claimed.\n'); print(json.dumps(summary,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-OpenAlex-Final-Completed-Package
+          path: final/
+          if-no-files-found: error
+          retention-days: 30
