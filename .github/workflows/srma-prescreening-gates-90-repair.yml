@@ -1,0 +1,156 @@
+name: SRMA Repair and Complete Three Pre-Screening Gates
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - srma-prescreening-gates-90-agents-20260729
+    paths:
+      - 'srma_prescreening90/gate_repair.py'
+      - '.github/workflows/srma-prescreening-gates-90-repair.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  repair_gate1:
+    name: Repair and assert Gate 1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download frozen inputs from original run
+        uses: actions/download-artifact@v4
+        with:
+          name: PS90-Prepared-Frozen-Inputs
+          path: prepared
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30434784709
+      - name: Download successful Gate 1 agent outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: PS90-Gate1-Agent-*
+          path: gate1_agents
+          merge-multiple: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30434784709
+      - name: Repair false-positive administrative matches and assert Gate 1
+        run: |
+          python -m py_compile srma_prescreening90/pipeline.py srma_prescreening90/gate_repair.py
+          python srma_prescreening90/gate_repair.py repair-gate1 \
+            --prepared prepared --agents gate1_agents --out gate1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS90R-Gate1-Passed
+          path: gate1/
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS90R-Prepared-Frozen-Inputs
+          path: prepared/
+          retention-days: 30
+
+  phase2:
+    name: REPAIRED-GATE2-${{ matrix.agent }}
+    needs: repair_gate1
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90R-Prepared-Frozen-Inputs
+          path: prepared
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90R-Gate1-Passed
+          path: gate1
+      - run: python srma_prescreening90/pipeline.py phase2-agent --agent '${{ matrix.agent }}' --prepared prepared --gate1 gate1 --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS90R-Gate2-Agent-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  gate2:
+    name: Assert Gate 2 after repaired Gate 1
+    needs: phase2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: PS90R-Gate2-Agent-*
+          path: gate2_agents
+          merge-multiple: false
+      - run: python srma_prescreening90/pipeline.py gate2 --input gate2_agents --out gate2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS90R-Gate2-Passed
+          path: gate2/
+          retention-days: 30
+
+  phase3:
+    name: REPAIRED-GATE3-${{ matrix.agent }}
+    needs: gate2
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90R-Prepared-Frozen-Inputs
+          path: prepared
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90R-Gate2-Passed
+          path: gate2
+      - run: python srma_prescreening90/pipeline.py phase3-agent --agent '${{ matrix.agent }}' --prepared prepared --gate2 gate2 --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS90R-Gate3-Agent-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  consolidate:
+    name: Verify and consolidate all three repaired gates
+    needs: phase3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90R-Gate1-Passed
+          path: downloaded/gate1
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90R-Gate2-Passed
+          path: downloaded/gate2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: PS90R-Gate3-Agent-*
+          path: downloaded/phase3
+          merge-multiple: false
+      - name: Consolidate and independently verify all gates
+        run: |
+          python srma_prescreening90/pipeline.py consolidate --input downloaded --out final_package
+          python srma_prescreening90/gate_repair.py verify-final --input final_package --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PreScreening-Three-Gate-90-Agent-Package-REPAIRED
+          path: final_package/
+          if-no-files-found: error
+          retention-days: 30
