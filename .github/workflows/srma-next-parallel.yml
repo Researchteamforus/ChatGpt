@@ -1,0 +1,322 @@
+name: SRMA Parallel Duplicate PDF Retrieval and Screening Preparation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'srma_parallel_next/**'
+      - '.github/workflows/srma-next-parallel.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare verified artifacts and efficient shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download 100-agent screening-preparation package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-SCREEN100-Enrichment-and-Provisional-Triage
+          path: inputs/screen
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30347146120
+      - name: Download consolidated PDF retrieval package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-PDF-1000-Consolidated
+          path: inputs/pdf
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30345089066
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate inputs and create parallel work shards
+        run: python srma_parallel_next/runner.py prepare --screen-dir inputs/screen --pdf-dir inputs/pdf --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Parallel-Small-Inputs
+          path: prepared/small_inputs/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-1
+          path: prepared/pdf_shards/shard_01/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-2
+          path: prepared/pdf_shards/shard_02/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-3
+          path: prepared/pdf_shards/shard_03/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 04
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-4
+          path: prepared/pdf_shards/shard_04/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 05
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-5
+          path: prepared/pdf_shards/shard_05/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 06
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-6
+          path: prepared/pdf_shards/shard_06/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 07
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-7
+          path: prepared/pdf_shards/shard_07/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 08
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-8
+          path: prepared/pdf_shards/shard_08/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 09
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-9
+          path: prepared/pdf_shards/shard_09/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 10
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-10
+          path: prepared/pdf_shards/shard_10/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 11
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-11
+          path: prepared/pdf_shards/shard_11/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 12
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-12
+          path: prepared/pdf_shards/shard_12/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 13
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-13
+          path: prepared/pdf_shards/shard_13/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 14
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-14
+          path: prepared/pdf_shards/shard_14/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 15
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-15
+          path: prepared/pdf_shards/shard_15/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 16
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-16
+          path: prepared/pdf_shards/shard_16/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 17
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-17
+          path: prepared/pdf_shards/shard_17/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 18
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-18
+          path: prepared/pdf_shards/shard_18/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 19
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-19
+          path: prepared/pdf_shards/shard_19/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload PDF QC shard 20
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-20
+          path: prepared/pdf_shards/shard_20/
+          if-no-files-found: error
+          retention-days: 7
+
+  duplicate_audit:
+    name: DUP-AUDIT-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        agent: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Parallel-Small-Inputs
+          path: inputs
+      - run: python srma_parallel_next/runner.py duplicate-agent --agent '${{ matrix.agent }}' --input inputs --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUP-AUDIT-${{ matrix.agent }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  pdf_qc:
+    name: PDF-LINK-QC-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check pypdf
+      - uses: actions/download-artifact@v4
+        with:
+          name: SRMA-PDF-QC-Shard-${{ matrix.agent }}
+          path: inputs
+      - run: python srma_parallel_next/runner.py pdf-agent --agent '${{ matrix.agent }}' --input inputs --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PDF-LINK-QC-${{ matrix.agent }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  unresolved_retrieval:
+    name: UNRESOLVED-ROUTE-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check requests
+      - uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Parallel-Small-Inputs
+          path: inputs
+      - run: python srma_parallel_next/runner.py unresolved-agent --agent '${{ matrix.agent }}' --input inputs --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UNRESOLVED-ROUTE-${{ matrix.agent }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  screening_templates:
+    name: SCREEN-BATCH-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Parallel-Small-Inputs
+          path: inputs
+      - run: python srma_parallel_next/runner.py batch-agent --agent '${{ matrix.agent }}' --input inputs --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCREEN-BATCH-${{ matrix.agent }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate 65-agent next-stage package
+    needs: [duplicate_audit, pdf_qc, unresolved_retrieval, screening_templates]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 'DUP-AUDIT-*'
+          path: downloaded/duplicates
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 'PDF-LINK-QC-*'
+          path: downloaded/pdf
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 'UNRESOLVED-ROUTE-*'
+          path: downloaded/unresolved
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 'SCREEN-BATCH-*'
+          path: downloaded/screening
+      - name: Verify all parallel outputs and consolidate
+        run: python srma_parallel_next/runner.py consolidate --input downloaded --out consolidated
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Parallel-Next-Stage-Package
+          path: consolidated/
+          if-no-files-found: error
+          retention-days: 30
