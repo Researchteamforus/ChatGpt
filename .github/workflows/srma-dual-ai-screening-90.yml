@@ -33,6 +33,7 @@ jobs:
       - name: Compile and prepare inputs
         run: |
           python -m py_compile srma_dual_ai90/dual_agent_screening.py
+          python -m py_compile srma_dual_ai90/build_blinded_verification.py
           python srma_dual_ai90/dual_agent_screening.py prepare --input source --out prepared
       - uses: actions/upload-artifact@v4
         with:
@@ -195,7 +196,10 @@ jobs:
         with:
           name: DA90-Gate2-Main-Supplementary-Passed
           path: input/gate2
-      - run: python srma_dual_ai90/dual_agent_screening.py consolidate --input input --out final_package
+      - name: Consolidate and build blinded human files
+        run: |
+          python srma_dual_ai90/dual_agent_screening.py consolidate --input input --out final_package
+          python srma_dual_ai90/build_blinded_verification.py --package final_package
       - uses: actions/upload-artifact@v4
         with:
           name: SRMA-Dual-AI-Provisional-Screening-90-Agent-Package
