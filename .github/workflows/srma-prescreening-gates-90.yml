@@ -1,0 +1,210 @@
+name: SRMA 90-Agent Three-Gate Pre-Screening Readiness
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - srma-reviewer-control-60-agents-20260729
+    paths:
+      - 'srma_prescreening90/**'
+      - '.github/workflows/srma-prescreening-gates-90.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare and freeze verified pre-screening inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download verified final-160 package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Final-Master-160-Agent-Package
+          path: source/final160
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30425412072
+      - name: Download successful manuscript-readiness package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Manuscript-Readiness-100-Agent-Package
+          path: source/manuscript100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30428691516
+      - name: Download successful screening-execution package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Screening-Execution-40-Agent-Package
+          path: source/screen40
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30429891243
+      - name: Download successful recovery-handoff package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Recovery-Handoff-50-Agent-Package
+          path: source/recovery50
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30431125933
+      - name: Download successful bottleneck-resolution package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Bottleneck-Resolution-70-Agent-Package
+          path: source/bottleneck70
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30431582607
+      - name: Validate processor and prepare frozen inputs
+        run: |
+          python -m py_compile srma_prescreening90/pipeline.py
+          python srma_prescreening90/pipeline.py prepare --input source --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS90-Prepared-Frozen-Inputs
+          path: prepared/
+          retention-days: 30
+
+  phase1:
+    name: GATE1-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90-Prepared-Frozen-Inputs
+          path: prepared
+      - run: python srma_prescreening90/pipeline.py phase1-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS90-Gate1-Agent-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  gate1:
+    name: Assert Gate 1 data freeze taxonomy and calibration readiness
+    needs: phase1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: PS90-Gate1-Agent-*
+          path: gate1_agents
+          merge-multiple: false
+      - run: python srma_prescreening90/pipeline.py gate1 --input gate1_agents --out gate1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS90-Gate1-Passed
+          path: gate1/
+          retention-days: 30
+
+  phase2:
+    name: GATE2-${{ matrix.agent }}
+    needs: gate1
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90-Prepared-Frozen-Inputs
+          path: prepared
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90-Gate1-Passed
+          path: gate1
+      - run: python srma_prescreening90/pipeline.py phase2-agent --agent '${{ matrix.agent }}' --prepared prepared --gate1 gate1 --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS90-Gate2-Agent-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  gate2:
+    name: Assert Gate 2 duplicate PDF linkage and full-text scheduling
+    needs: phase2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: PS90-Gate2-Agent-*
+          path: gate2_agents
+          merge-multiple: false
+      - run: python srma_prescreening90/pipeline.py gate2 --input gate2_agents --out gate2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS90-Gate2-Passed
+          path: gate2/
+          retention-days: 30
+
+  phase3:
+    name: GATE3-${{ matrix.agent }}
+    needs: gate2
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90-Prepared-Frozen-Inputs
+          path: prepared
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90-Gate2-Passed
+          path: gate2
+      - run: python srma_prescreening90/pipeline.py phase3-agent --agent '${{ matrix.agent }}' --prepared prepared --gate2 gate2 --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS90-Gate3-Agent-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate three-gate pre-screening launch package
+    needs: phase3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90-Gate1-Passed
+          path: downloaded/gate1
+      - uses: actions/download-artifact@v4
+        with:
+          name: PS90-Gate2-Passed
+          path: downloaded/gate2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: PS90-Gate3-Agent-*
+          path: downloaded/phase3
+          merge-multiple: false
+      - run: python srma_prescreening90/pipeline.py consolidate --input downloaded --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PreScreening-Three-Gate-90-Agent-Package
+          path: final_package/
+          if-no-files-found: error
+          retention-days: 30
