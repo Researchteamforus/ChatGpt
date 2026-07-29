@@ -1,0 +1,235 @@
+name: SRMA 120-Agent Supplementary Triage and Retrieval
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - srma-citation-route-qa-80-agents-20260729
+    paths:
+      - 'srma_supp120/**'
+      - '.github/workflows/srma-supp120.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare supplementary-candidate shards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download successful citation-route package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Citation-Route-QA-80-Agent-Package
+          path: source/citation80
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30432109355
+      - name: Download verified final-160 package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Final-Master-160-Agent-Package
+          path: source/final160
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30425412072
+      - name: Validate code and create shards
+        run: |
+          python -m py_compile srma_supp120/agent.py
+          python srma_supp120/agent.py prepare --input source --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUP120-Input-Triage
+          path: prepared/triage_shards/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUP120-Input-Dedup
+          path: prepared/dedup_shards/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUP120-Input-Route
+          path: prepared/route_shards/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUP120-Input-Screen
+          path: prepared/screen_shards/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUP120-Input-QA
+          path: prepared/qa_shards/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUP120-Preparation-Audit
+          path: prepared/prepare_summary.json
+          retention-days: 30
+
+  triage:
+    name: TRIAGE-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 60
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SUP120-Input-Triage
+          path: input
+      - run: python srma_supp120/agent.py triage-agent --agent '${{ matrix.agent }}' --input input --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUP120-Triage-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  dedup:
+    name: DEDUP-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SUP120-Input-Dedup
+          path: input
+      - run: python srma_supp120/agent.py dedup-agent --agent '${{ matrix.agent }}' --input input --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUP120-Dedup-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  route:
+    name: ROUTE-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check requests
+      - uses: actions/download-artifact@v4
+        with:
+          name: SUP120-Input-Route
+          path: input
+      - run: python srma_supp120/agent.py route-agent --agent '${{ matrix.agent }}' --input input --out output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SUP120-Route-Manifest-${{ matrix.agent }}
+          path: |
+            output/route_*.csv
+            output/summary.json
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SUP120-Route-PDFs-${{ matrix.agent }}
+          path: output/pdfs/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  screen:
+    name: SCREEN-BATCH-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SUP120-Input-Screen
+          path: input
+      - run: python srma_supp120/agent.py screen-agent --agent '${{ matrix.agent }}' --input input --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUP120-Screen-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  qa:
+    name: PRISMA-QA-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SUP120-Input-QA
+          path: input
+      - run: python srma_supp120/agent.py qa-agent --agent '${{ matrix.agent }}' --input input --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUP120-QA-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate 120-agent supplementary package
+    needs: [triage, dedup, route, screen, qa]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SUP120-Triage-*
+          path: all_outputs/triage
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SUP120-Dedup-*
+          path: all_outputs/dedup
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SUP120-Route-Manifest-*
+          path: all_outputs/route
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SUP120-Screen-*
+          path: all_outputs/screen
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SUP120-QA-*
+          path: all_outputs/qa
+      - run: python srma_supp120/agent.py consolidate --input all_outputs --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Supplementary-120-Agent-Package
+          path: final_package/
+          if-no-files-found: error
+          retention-days: 30
