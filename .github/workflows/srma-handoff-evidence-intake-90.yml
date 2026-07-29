@@ -1,0 +1,194 @@
+name: SRMA 90-Agent Handoff Evidence and Intake Support
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - srma-calibration-launch-100-agents-20260729
+    paths:
+      - 'srma_handoff90/**'
+      - '.github/workflows/srma-handoff-evidence-intake-90.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare verified handoff and evidence inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download calibration-screening launch package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Calibration-Screening-Launch-100-Agent-Package
+          path: source/cal100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30437942079
+      - name: Download bottleneck-resolution package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Bottleneck-Resolution-70-Agent-Package
+          path: source/bottleneck70
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30431582607
+      - name: Download supplementary package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Supplementary-120-Agent-Package
+          path: source/supplementary120
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30433671814
+      - name: Download repaired three-gate package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-PreScreening-Three-Gate-90-Agent-Package-REPAIRED
+          path: source/gates90
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30436310139
+      - name: Compile and validate inputs
+        run: |
+          python -m py_compile srma_handoff90/pipeline.py
+          python srma_handoff90/pipeline.py prepare --input source --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: H90-Prepared-Inputs
+          path: prepared/
+          retention-days: 30
+
+  stage1:
+    name: HANDOFF-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: H90-Prepared-Inputs
+          path: prepared
+      - run: python srma_handoff90/pipeline.py stage1-agent --prepared prepared --out output --agent '${{ matrix.agent }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: H90-Stage1-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  gate1:
+    name: Assert calibration handoff readiness
+    needs: stage1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: H90-Stage1-*
+          path: stage1
+          merge-multiple: false
+      - run: python srma_handoff90/pipeline.py gate1 --input stage1 --out gate1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: H90-Gate1-Passed
+          path: gate1/
+          retention-days: 30
+
+  stage2:
+    name: EVIDENCE-${{ matrix.agent }}
+    needs: gate1
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: H90-Prepared-Inputs
+          path: prepared
+      - run: python srma_handoff90/pipeline.py stage2-agent --prepared prepared --out output --agent '${{ matrix.agent }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: H90-Stage2-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  gate2:
+    name: Assert full-text duplicate and supplementary evidence
+    needs: stage2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: H90-Stage2-*
+          path: stage2
+          merge-multiple: false
+      - run: python srma_handoff90/pipeline.py gate2 --input stage2 --out gate2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: H90-Gate2-Passed
+          path: gate2/
+          retention-days: 30
+
+  stage3:
+    name: INTAKE-${{ matrix.agent }}
+    needs: gate2
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: H90-Prepared-Inputs
+          path: prepared
+      - run: python srma_handoff90/pipeline.py stage3-agent --prepared prepared --out output --agent '${{ matrix.agent }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: H90-Stage3-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate 90-agent support package
+    needs: stage3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: H90-Gate1-Passed
+          path: downloaded/gate1
+      - uses: actions/download-artifact@v4
+        with:
+          name: H90-Gate2-Passed
+          path: downloaded/gate2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: H90-Stage3-*
+          path: downloaded/stage3
+          merge-multiple: false
+      - run: python srma_handoff90/pipeline.py consolidate --input downloaded --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Handoff-Evidence-Intake-90-Agent-Package
+          path: final_package/
+          if-no-files-found: error
+          retention-days: 30
