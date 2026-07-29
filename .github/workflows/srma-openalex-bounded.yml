@@ -1,0 +1,72 @@
+name: SRMA OpenAlex 55-Agent Year-Bounded Repair
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'srma_openalex_bounded/**'
+      - '.github/workflows/srma-openalex-bounded.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  search:
+    name: OA-${{ matrix.group }}-${{ matrix.period }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        group: [coverage, timeliness, dropout, determinants, programme]
+        period: ['1970-1989', '1990-1999', '2000-2004', '2005-2009', '2010-2012', '2013-2015', '2016-2018', '2019-2020', '2021-2022', '2023-2024', '2025-2026']
+    env:
+      OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+      OPENALEX_MAILTO: st19009@mbstu.ac.bd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check requests
+      - name: Execute bounded cursor search
+        env:
+          GROUP: ${{ matrix.group }}
+          PERIOD: ${{ matrix.period }}
+        run: |
+          START="${PERIOD%-*}"
+          END="${PERIOD#*-}"
+          python srma_openalex_bounded/openalex_bounded.py run \
+            --group "$GROUP" --start "$START" --end "$END" \
+            --out "output/${GROUP}_${START}_${END}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: OA-${{ matrix.group }}-${{ matrix.period }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate and verify 55 bounded OpenAlex agents
+    needs: search
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 'OA-*'
+          path: downloaded
+      - name: Consolidate exact-unique results and verify all year bands
+        run: python srma_openalex_bounded/openalex_bounded.py consolidate --input downloaded --out consolidated
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SRMA-OpenAlex-55-Agent-Bounded-Package
+          path: consolidated/
+          if-no-files-found: warn
+          retention-days: 30
