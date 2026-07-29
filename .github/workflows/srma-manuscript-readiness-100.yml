@@ -1,0 +1,164 @@
+name: SRMA 100-Agent Manuscript Readiness and Reproducibility
+
+on:
+  pull_request:
+    paths:
+      - 'srma_manuscript100/**'
+      - '.github/workflows/srma-manuscript-readiness-100.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare verified manuscript-readiness inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download verified prior artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p inputs/final160 inputs/downstream45 inputs/screen100 inputs/oafinal
+          gh api /repos/${{ github.repository }}/actions/artifacts/8713483139/zip > /tmp/final160.zip
+          gh api /repos/${{ github.repository }}/actions/artifacts/8712763360/zip > /tmp/downstream45.zip
+          gh api /repos/${{ github.repository }}/actions/artifacts/8683831403/zip > /tmp/screen100.zip
+          gh api /repos/${{ github.repository }}/actions/artifacts/8712724936/zip > /tmp/oafinal.zip
+          unzip -q /tmp/final160.zip -d inputs/final160
+          unzip -q /tmp/downstream45.zip -d inputs/downstream45
+          unzip -q /tmp/screen100.zip -d inputs/screen100
+          unzip -q /tmp/oafinal.zip -d inputs/oafinal
+      - name: Validate and inventory inputs
+        run: |
+          python -m py_compile srma_manuscript100/manuscript100.py
+          python srma_manuscript100/manuscript100.py prepare --inputs inputs/final160 inputs/downstream45 inputs/screen100 inputs/oafinal --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MR100-prepared
+          path: prepared
+          retention-days: 30
+
+  reporting:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    runs-on: ubuntu-latest
+    name: REPORTING-${{ matrix.agent }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: MR100-prepared, path: prepared}
+      - run: python srma_manuscript100/manuscript100.py reporting --agent '${{ matrix.agent }}' --input prepared --out output/reporting
+      - uses: actions/upload-artifact@v4
+        with: {name: 'MR100-reporting-${{ matrix.agent }}', path: output, retention-days: 30}
+
+  codebook:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    runs-on: ubuntu-latest
+    name: CODEBOOK-${{ matrix.agent }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: MR100-prepared, path: prepared}
+      - run: python srma_manuscript100/manuscript100.py codebook --agent '${{ matrix.agent }}' --input prepared --out output/codebook
+      - uses: actions/upload-artifact@v4
+        with: {name: 'MR100-codebook-${{ matrix.agent }}', path: output, retention-days: 30}
+
+  rob:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    runs-on: ubuntu-latest
+    name: ROB-${{ matrix.agent }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: MR100-prepared, path: prepared}
+      - run: python srma_manuscript100/manuscript100.py rob --agent '${{ matrix.agent }}' --input prepared --out output/rob
+      - uses: actions/upload-artifact@v4
+        with: {name: 'MR100-rob-${{ matrix.agent }}', path: output, retention-days: 30}
+
+  synthesis:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    runs-on: ubuntu-latest
+    name: SYNTHESIS-${{ matrix.agent }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: MR100-prepared, path: prepared}
+      - run: python srma_manuscript100/manuscript100.py synthesis --agent '${{ matrix.agent }}' --input prepared --out output/synthesis
+      - uses: actions/upload-artifact@v4
+        with: {name: 'MR100-synthesis-${{ matrix.agent }}', path: output, retention-days: 30}
+
+  grade:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    runs-on: ubuntu-latest
+    name: GRADE-${{ matrix.agent }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: MR100-prepared, path: prepared}
+      - run: python srma_manuscript100/manuscript100.py grade --agent '${{ matrix.agent }}' --input prepared --out output/grade
+      - uses: actions/upload-artifact@v4
+        with: {name: 'MR100-grade-${{ matrix.agent }}', path: output, retention-days: 30}
+
+  reproducibility:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    runs-on: ubuntu-latest
+    name: REPRO-${{ matrix.agent }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: MR100-prepared, path: prepared}
+      - run: python srma_manuscript100/manuscript100.py repro --agent '${{ matrix.agent }}' --input prepared --out output/repro
+      - uses: actions/upload-artifact@v4
+        with: {name: 'MR100-repro-${{ matrix.agent }}', path: output, retention-days: 30}
+
+  consolidate:
+    needs: [reporting, codebook, rob, synthesis, grade, reproducibility]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    name: Consolidate manuscript-readiness package
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: MR100-*
+          path: all_outputs
+          merge-multiple: true
+      - run: python srma_manuscript100/manuscript100.py consolidate --input all_outputs --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Manuscript-Readiness-100-Agent-Package
+          path: final_package
+          retention-days: 30
