@@ -1,0 +1,180 @@
+name: SRMA 40-Agent Screening Execution Preparation
+
+on:
+  pull_request:
+    paths:
+      - 'srma_screening_execution/**'
+      - '.github/workflows/srma-screening-execution-40.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare verified screening-execution inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download verified final-160 package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p upstream/final160
+          gh api /repos/${GITHUB_REPOSITORY}/actions/artifacts/8713483139/zip > final160.zip
+          unzip -q final160.zip -d upstream/final160
+      - name: Download successful manuscript-readiness package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p upstream/readiness
+          gh api /repos/${GITHUB_REPOSITORY}/actions/artifacts/8714801474/zip > readiness.zip
+          unzip -q readiness.zip -d upstream/readiness
+      - name: Validate and prepare batches
+        run: |
+          python srma_screening_execution/screening_execution.py prepare \
+            --final160 upstream/final160 \
+            --readiness upstream/readiness \
+            --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCREENEXEC40-Prepared
+          path: prepared
+          retention-days: 30
+
+  handbook:
+    name: HANDBOOK-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SCREENEXEC40-Prepared
+          path: prepared
+      - run: python srma_screening_execution/screening_execution.py handbook-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCREENEXEC40-Handbook-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  taxonomy:
+    name: TAXONOMY-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SCREENEXEC40-Prepared
+          path: prepared
+      - run: python srma_screening_execution/screening_execution.py taxonomy-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCREENEXEC40-Taxonomy-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  exports:
+    name: EXPORT-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SCREENEXEC40-Prepared
+          path: prepared
+      - run: python srma_screening_execution/screening_execution.py export-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCREENEXEC40-Export-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  adjudication:
+    name: ADJUDICATION-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SCREENEXEC40-Prepared
+          path: prepared
+      - run: python srma_screening_execution/screening_execution.py adjudication-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCREENEXEC40-Adjudication-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate 40-agent screening-execution package
+    needs: [handbook, taxonomy, exports, adjudication]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SCREENEXEC40-Handbook-*
+          path: all_outputs
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SCREENEXEC40-Taxonomy-*
+          path: all_outputs
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SCREENEXEC40-Export-*
+          path: all_outputs
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SCREENEXEC40-Adjudication-*
+          path: all_outputs
+          merge-multiple: true
+      - name: Consolidate and validate
+        run: python srma_screening_execution/screening_execution.py consolidate --input all_outputs --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Screening-Execution-40-Agent-Package
+          path: final_package
+          retention-days: 30
