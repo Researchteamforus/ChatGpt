@@ -1,0 +1,198 @@
+name: SRMA 100-Agent Calibration and Screening Launch
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - srma-prescreening-gates-repair-20260729
+    paths:
+      - 'srma_calibration100/**'
+      - '.github/workflows/srma-calibration-launch-100-agents.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare verified calibration and screening inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download screening execution package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Screening-Execution-40-Agent-Package
+          path: source/screen40
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30429891243
+      - name: Download supplementary package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Supplementary-120-Agent-Package
+          path: source/sup120
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30433671814
+      - name: Download reviewer-control package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Reviewer-Control-60-Agent-Package
+          path: source/rc60
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30434183815
+      - name: Download repaired three-gate package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-PreScreening-Three-Gate-90-Agent-Package-REPAIRED
+          path: source/ps90
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30436310139
+      - name: Compile and prepare inputs
+        run: |
+          python -m py_compile srma_calibration100/launch.py
+          python srma_calibration100/launch.py prepare --input source --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CAL100-Prepared-Inputs
+          path: prepared/
+          retention-days: 30
+
+  stage1:
+    name: STAGE1-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: CAL100-Prepared-Inputs
+          path: prepared
+      - run: python srma_calibration100/launch.py stage1 --agent '${{ matrix.agent }}' --prepared prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CAL100-Stage1-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  gate1:
+    name: Assert Stage 1 calibration launch readiness
+    needs: stage1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: CAL100-Stage1-*
+          path: stage1
+          merge-multiple: false
+      - run: python srma_calibration100/launch.py gate1 --input stage1 --out gate1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CAL100-Gate1-Passed
+          path: gate1/
+          retention-days: 30
+
+  stage2:
+    name: STAGE2-${{ matrix.agent }}
+    needs: gate1
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: CAL100-Gate1-Passed
+          path: gate1
+      - run: python srma_calibration100/launch.py stage2 --agent '${{ matrix.agent }}' --gate1 gate1 --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CAL100-Stage2-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  gate2:
+    name: Assert Stage 2 decision validation and reconciliation readiness
+    needs: stage2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: CAL100-Stage2-*
+          path: stage2
+          merge-multiple: false
+      - run: python srma_calibration100/launch.py gate2 --input stage2 --out gate2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CAL100-Gate2-Passed
+          path: gate2/
+          retention-days: 30
+
+  stage3:
+    name: STAGE3-${{ matrix.agent }}
+    needs: gate2
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: CAL100-Prepared-Inputs
+          path: prepared
+      - run: python srma_calibration100/launch.py stage3 --agent '${{ matrix.agent }}' --prepared prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CAL100-Stage3-${{ matrix.agent }}
+          path: output/
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate human-screening operational launch package
+    needs: stage3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: CAL100-Prepared-Inputs
+          path: prepared
+      - uses: actions/download-artifact@v4
+        with:
+          name: CAL100-Gate1-Passed
+          path: gate1
+      - uses: actions/download-artifact@v4
+        with:
+          name: CAL100-Gate2-Passed
+          path: gate2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: CAL100-Stage3-*
+          path: stage3
+          merge-multiple: false
+      - run: python srma_calibration100/launch.py final --prepared prepared --gate1 gate1 --gate2 gate2 --gate3 stage3 --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Calibration-Screening-Launch-100-Agent-Package
+          path: final_package/
+          if-no-files-found: error
+          retention-days: 30
