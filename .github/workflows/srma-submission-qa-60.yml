@@ -1,0 +1,170 @@
+name: SRMA 60-Agent Submission QA and Integrity
+
+on:
+  pull_request:
+    paths:
+      - 'srma_submission_qa/**'
+      - '.github/workflows/srma-submission-qa-60.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare verified submission-QA inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download verified final-160 package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p source
+          curl -L --fail --retry 4 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/8713483139/zip" \
+            -o final160.zip
+          unzip -q final160.zip -d source
+      - name: Validate and prepare lightweight inputs
+        run: python srma_submission_qa/submission_qa.py prepare --input source --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUBQA60-Prepared
+          path: prepared
+          retention-days: 30
+
+  traceability:
+    name: TRACE-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SUBQA60-Prepared
+          path: prepared
+      - run: python srma_submission_qa/submission_qa.py trace-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUBQA60-Trace-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  shells:
+    name: SHELL-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SUBQA60-Prepared
+          path: prepared
+      - run: python srma_submission_qa/submission_qa.py shell-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUBQA60-Shell-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  statistics:
+    name: STAT-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SUBQA60-Prepared
+          path: prepared
+      - run: python srma_submission_qa/submission_qa.py stat-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUBQA60-Stat-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  archive:
+    name: ARCHIVE-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SUBQA60-Prepared
+          path: prepared
+      - run: python srma_submission_qa/submission_qa.py archive-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUBQA60-Archive-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  administration:
+    name: ADMIN-${{ matrix.agent }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        agent: [1,2,3,4,5,6,7,8,9,10]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SUBQA60-Prepared
+          path: prepared
+      - run: python srma_submission_qa/submission_qa.py admin-agent --agent '${{ matrix.agent }}' --input prepared --out output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SUBQA60-Admin-${{ matrix.agent }}
+          path: output
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate 60-agent submission-QA package
+    needs: [traceability, shells, statistics, archive, administration]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SUBQA60-*
+          path: all_outputs
+          merge-multiple: true
+      - run: python srma_submission_qa/submission_qa.py consolidate --input all_outputs --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Submission-QA-60-Agent-Package
+          path: final_package
+          retention-days: 30
