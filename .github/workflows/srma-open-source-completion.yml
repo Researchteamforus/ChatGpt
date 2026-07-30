@@ -1,0 +1,60 @@
+name: SRMA Open Source Completion
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "srma_search/SRMA_Open_Source_Completion_v4.py"
+      - ".github/workflows/srma-open-source-completion.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run-open-source-completion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests beautifulsoup4
+
+      - name: Syntax check
+        run: python -m py_compile srma_search/SRMA_Open_Source_Completion_v4.py
+
+      - name: Run BanglaJOL, GIM-IMSEAR and WHO IRIS retrieval
+        run: python srma_search/SRMA_Open_Source_Completion_v4.py
+
+      - name: Show summary
+        if: always()
+        shell: bash
+        run: |
+          SUMMARY=$(find . -type f -name SUMMARY.json | head -n 1)
+          if [ -n "$SUMMARY" ]; then
+            cat "$SUMMARY"
+          fi
+          find . -maxdepth 2 -type f -name 'SRMA_OPEN_SOURCE_COMPLETION_*.zip' -print
+
+      - name: Upload completion package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-open-source-completion-results
+          path: |
+            SRMA_OPEN_SOURCE_COMPLETION_*.zip
+            SRMA_OPEN_SOURCE_COMPLETION_*/SUMMARY.json
+            SRMA_OPEN_SOURCE_COMPLETION_*/ERRORS.json
+          if-no-files-found: warn
+          retention-days: 30

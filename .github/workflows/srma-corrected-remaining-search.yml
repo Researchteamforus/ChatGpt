@@ -1,0 +1,62 @@
+name: SRMA Corrected Remaining Search
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "srma_search/SRMA_Corrected_Remaining_Search_v2.py"
+      - ".github/workflows/srma-corrected-remaining-search.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run-corrected-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests beautifulsoup4
+
+      - name: Syntax check
+        run: python -m py_compile srma_search/SRMA_Corrected_Remaining_Search_v2.py
+
+      - name: Run corrected formal searches
+        run: python srma_search/SRMA_Corrected_Remaining_Search_v2.py
+
+      - name: Show generated summary
+        if: always()
+        shell: bash
+        run: |
+          echo "Generated files:"
+          find . -maxdepth 3 -type f -name 'SUMMARY.json' -o -name 'ERRORS.json' -o -name 'CORRECTED_REMAINING_SEARCH_*.zip' | sort
+          SUMMARY=$(find . -type f -name SUMMARY.json | head -n 1)
+          if [ -n "$SUMMARY" ]; then
+            echo "--- SUMMARY.json ---"
+            cat "$SUMMARY"
+          fi
+
+      - name: Upload corrected search package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-corrected-remaining-search-results
+          path: |
+            CORRECTED_REMAINING_SEARCH_*.zip
+            CORRECTED_REMAINING_SEARCH_*/SUMMARY.json
+            CORRECTED_REMAINING_SEARCH_*/ERRORS.json
+          if-no-files-found: warn
+          retention-days: 30
