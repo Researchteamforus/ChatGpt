@@ -1,0 +1,11 @@
+{
+  "date": "2026-07-28",
+  "target_records": 1357,
+  "lanes": 1000,
+  "shards": 4,
+  "jobs_per_shard": 250,
+  "max_parallel_per_shard": 5,
+  "max_planned_parallel_total": 20,
+  "already_retrieved_excluded_from_rerun": 414,
+  "branch": "srma-pdf-1000-lanes-20260728"
+}

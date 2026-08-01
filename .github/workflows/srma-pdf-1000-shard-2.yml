@@ -1,0 +1,69 @@
+name: SRMA PDF Retrieval 1000 Lanes - Shard 2
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'srma_pdf_1000/**'
+      - '.github/workflows/srma-pdf-1000-shard-2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  retrieve:
+    name: PDF-AGENT-${{ matrix.lane }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        lane: [251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346, 347, 348, 349, 350, 351, 352, 353, 354, 355, 356, 357, 358, 359, 360, 361, 362, 363, 364, 365, 366, 367, 368, 369, 370, 371, 372, 373, 374, 375, 376, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386, 387, 388, 389, 390, 391, 392, 393, 394, 395, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 424, 425, 426, 427, 428, 429, 430, 431, 432, 433, 434, 435, 436, 437, 438, 439, 440, 441, 442, 443, 444, 445, 446, 447, 448, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465, 466, 467, 468, 469, 470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install retrieval dependency
+        run: python -m pip install --disable-pip-version-check requests
+
+      - name: Reconstruct and validate compact manifest
+        shell: bash
+        run: |
+          cat srma_pdf_1000/manifest_tiny_parts/part_*.txt \
+            | tr -d '\r\n' \
+            | base64 --decode \
+            | xz --decompress \
+            > srma_pdf_1000/manifest_tiny_title.csv
+          echo "4beb4c6665d6c7378a0bf5af16414edb2d7371e3f5aadff30726007fd4912e96  srma_pdf_1000/manifest_tiny_title.csv" | sha256sum --check --strict
+          python - <<'PYVERIFY'
+          import csv
+          with open('srma_pdf_1000/manifest_tiny_title.csv', encoding='utf-8-sig', newline='') as handle:
+              rows = list(csv.DictReader(handle))
+          assert len(rows) == 1357, len(rows)
+          lanes = {int(row['l']) for row in rows}
+          assert lanes == set(range(1, 1001)), (len(lanes), min(lanes), max(lanes))
+          print('Validated manifest:', len(rows), 'records across', len(lanes), 'lanes')
+          PYVERIFY
+
+      - name: Retrieve openly accessible PDFs
+        shell: bash
+        run: |
+          PADDED=$(printf '%04d' "${{ matrix.lane }}")
+          python srma_pdf_1000/retrieve_tiny_lane.py \
+            --manifest srma_pdf_1000/manifest_tiny_title.csv \
+            --lane "${{ matrix.lane }}" \
+            --output "retrieval/PDF-AGENT-${PADDED}"
+
+      - name: Upload lane result and any open PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDF-AGENT-${{ matrix.lane }}
+          path: retrieval/
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 6

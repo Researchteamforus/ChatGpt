@@ -1,0 +1,68 @@
+name: SRMA PDF Retrieval 1000 Lanes - Consolidate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'srma_pdf_1000/consolidate_retrieval_artifacts.py'
+      - '.github/workflows/srma-pdf-1000-consolidate.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  consolidate:
+    name: Consolidate 1,357 retrieval records
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download all 1,000 lane artifacts from four successful shards
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p downloaded_artifacts
+          for RUN_ID in 30331196758 30331196777 30331196764 30331196762; do
+            echo "Downloading all artifacts from workflow run ${RUN_ID}"
+            gh run download "${RUN_ID}" --repo "${REPOSITORY}" --dir downloaded_artifacts
+          done
+          echo "Downloaded artifact directories: $(find downloaded_artifacts -mindepth 1 -maxdepth 1 -type d | wc -l)"
+          echo "Lane result CSV files: $(find downloaded_artifacts -type f -name '*_results.csv' | wc -l)"
+
+      - name: Consolidate, verify, and exact-deduplicate PDFs
+        run: |
+          python srma_pdf_1000/consolidate_retrieval_artifacts.py \
+            --input downloaded_artifacts \
+            --output consolidated_retrieval \
+            --expected-records 1357
+
+      - name: Publish readable run summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f consolidated_retrieval/README.md ]; then
+            cat consolidated_retrieval/README.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '# Consolidation did not produce README.md' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload consolidated auditable retrieval package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-PDF-1000-Consolidated
+          path: consolidated_retrieval/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 6
