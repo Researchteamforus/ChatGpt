@@ -1,17 +1,17 @@
 # Analysis source
 
-The exact full analysis script is stored as `reviewer10_final_analysis.py.gz` to preserve the verified source byte-for-byte.
+The exact full analysis script is stored as `main_analysis.py.gz` to preserve the verified source byte-for-byte.
 
 Extract it with:
 
 ```bash
-gzip -dk reviewer10_final_analysis.py.gz
+gzip -dk main_analysis.py.gz
 ```
 
 Then run from the repository root:
 
 ```bash
-python analysis/reviewer10_final_analysis.py
+python analysis/main_analysis.py
 ```
 
 `compute_benchmark.py` provides the CPU timing benchmark. The unit tests are in `../tests/`.
