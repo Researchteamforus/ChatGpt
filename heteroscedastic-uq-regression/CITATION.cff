@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "Please cite the accompanying manuscript and this software archive."
+title: "Heteroscedastic Neural Regression Benchmark"
+type: software
+authors:
+  - family-names: Rahman
+    given-names: Md. Mizanoor
+version: 1.0.0
+date-released: 2026-08-04
+license: MIT
+repository-code: "https://github.com/Researchteamforus/ChatGpt/tree/main/heteroscedastic-uq-regression"
+url: "https://github.com/Researchteamforus/ChatGpt/tree/main/heteroscedastic-uq-regression"
