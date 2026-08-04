@@ -6,12 +6,11 @@ Code and processed result data accompanying the manuscript:
 
 ## Contents
 
-- `analysis/reviewer10_final_analysis.py.gz` — exact compressed analysis workflow. Extract it with `gzip -dk analysis/reviewer10_final_analysis.py.gz`.
+- `analysis/main_analysis.py.gz` — exact compressed analysis workflow. Extract it with `gzip -dk analysis/main_analysis.py.gz`.
 - `analysis/compute_benchmark.py` — CPU training and inference benchmark.
-- `results/` — selected publication-facing benchmark summaries, seed-level OOD utility data, compute results, software/hardware metadata, and the test log. Running the analysis script regenerates the complete result set.
-- `tests/test_reviewer10_analysis.py` — implementation tests for clipping gradients, exact mixture NLL, Protocol B dataset reuse, conformal quantiles, and posterior predictive draws.
+- `results/` — publication-facing benchmark summaries, seed-level OOD utility data, compute results, software/hardware metadata, and the test log. Running the analysis script regenerates the complete result set.
+- `tests/test_analysis.py` — implementation tests for clipping gradients, exact mixture NLL, Protocol B dataset reuse, conformal quantiles, and posterior predictive draws.
 - `REPRODUCIBILITY_CHECKLIST.md` — execution and reporting checklist.
-- `REVIEWER_ISSUE_RESOLUTION_MATRIX.md` — audit trail for the ten reviewer-role critiques.
 
 ## Reproduction
 
@@ -19,8 +18,8 @@ Code and processed result data accompanying the manuscript:
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-gzip -dk analysis/reviewer10_final_analysis.py.gz
-python analysis/reviewer10_final_analysis.py
+gzip -dk analysis/main_analysis.py.gz
+python analysis/main_analysis.py
 python analysis/compute_benchmark.py
 pytest -q tests
 ```
