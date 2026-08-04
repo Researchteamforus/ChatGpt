@@ -1,0 +1,20 @@
+# Reproducibility Checklist
+
+- [x] Fixed global seed and all analysis-specific seed streams documented.
+- [x] Training and evaluation log-variance bounds identical (`[-6, 6]`).
+- [x] Correct clamp derivative verified by unit test.
+- [x] Exact Gaussian-mixture NLL verified against a manual calculation.
+- [x] Synthetic data-generation function and region definitions included.
+- [x] Protocol B reuses the same realized data within each outer replication.
+- [x] Ten outer synthetic realizations and two inner optimization seeds supplied.
+- [x] Group-aware and temporal Grunfeld splits saved.
+- [x] Out-of-fold prediction files saved for all real-data analyses.
+- [x] Observation- and firm-cluster bootstrap contrast files saved.
+- [x] Same-point-predictor neural split-conformal baseline supplied.
+- [x] Conformalized quantile-boosting baseline supplied.
+- [x] Hyperparameter and posterior-draw sensitivity outputs supplied.
+- [x] CPU training and inference benchmark supplied.
+- [x] Software versions and hardware metadata supplied.
+- [x] All figures available at 300 dpi.
+- [x] Unit tests pass (`5 passed`).
+- [x] Public GitHub repository folder created.
