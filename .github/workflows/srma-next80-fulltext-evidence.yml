@@ -1,0 +1,230 @@
+name: SRMA 80-Agent Full-text and Evidence Readiness
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - srma-dual-ai-screening-90-agents-20260729
+    paths:
+      - 'srma_next80/**'
+      - '.github/workflows/srma-next80-fulltext-evidence.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare current full-text and evidence inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download bottleneck-resolution package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Bottleneck-Resolution-70-Agent-Package
+          path: source/br70
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30431582607
+      - name: Download supplementary route package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-Supplementary-120-Agent-Package
+          path: source/sup120
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30433671814
+      - name: Download extraction and RoB seed package
+        uses: actions/download-artifact@v4
+        with:
+          name: SRMA-45-Agent-Downstream-Package
+          path: source/down45
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Researchteamforus/ChatGpt
+          run-id: 30423373926
+      - name: Compile and prepare verified inputs
+        run: |
+          python -m py_compile srma_next80/processor.py
+          python srma_next80/processor.py prepare --source source --out prepared
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXT80-Prepared
+          path: prepared/
+          retention-days: 30
+
+  route_agents:
+    name: ROUTE-${{ matrix.batch }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        batch: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: NEXT80-Prepared
+          path: prepared
+      - run: python srma_next80/processor.py route-agent --prepared prepared --out output --batch '${{ matrix.batch }}' --timeout 6 --max-routes 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXT80-route-${{ matrix.batch }}
+          path: output/
+          retention-days: 30
+
+  gate1:
+    name: Assert route recovery integrity
+    needs: route_agents
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: NEXT80-route-*
+          path: input
+          merge-multiple: false
+      - run: python srma_next80/processor.py gate --input input --out gate1 --expected 20 --name route_gate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXT80-Gate1-Routes
+          path: gate1/
+          retention-days: 30
+
+  duplicate_agents:
+    name: DUPLICATE-${{ matrix.batch }}
+    needs: gate1
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        batch: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: NEXT80-Prepared
+          path: prepared
+      - run: python srma_next80/processor.py duplicate-agent --prepared prepared --out output --batch '${{ matrix.batch }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXT80-duplicate-${{ matrix.batch }}
+          path: output/
+          retention-days: 30
+
+  fulltext_agents:
+    name: FULLTEXT-${{ matrix.batch }}
+    needs: gate1
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        batch: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: NEXT80-Prepared
+          path: prepared
+      - run: python srma_next80/processor.py fulltext-agent --prepared prepared --out output --batch '${{ matrix.batch }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXT80-fulltext-${{ matrix.batch }}
+          path: output/
+          retention-days: 30
+
+  gate2:
+    name: Assert duplicate and full-text form integrity
+    needs: [duplicate_agents, fulltext_agents]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: NEXT80-duplicate-*
+          path: input/duplicates
+          merge-multiple: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: NEXT80-fulltext-*
+          path: input/fulltext
+          merge-multiple: false
+      - run: python srma_next80/processor.py gate --input input --out gate2 --expected 40 --name evidence_gate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXT80-Gate2-Evidence
+          path: gate2/
+          retention-days: 30
+
+  extraction_agents:
+    name: EXTRACTION-ROB-${{ matrix.batch }}
+    needs: gate2
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        batch: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: NEXT80-Prepared
+          path: prepared
+      - run: python srma_next80/processor.py extraction-agent --prepared prepared --out output --batch '${{ matrix.batch }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXT80-extraction-${{ matrix.batch }}
+          path: output/
+          retention-days: 30
+
+  gate3:
+    name: Assert extraction and RoB readiness integrity
+    needs: extraction_agents
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: NEXT80-extraction-*
+          path: input
+          merge-multiple: false
+      - run: python srma_next80/processor.py gate --input input --out gate3 --expected 20 --name extraction_gate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXT80-Gate3-Extraction
+          path: gate3/
+          retention-days: 30
+
+  consolidate:
+    name: Consolidate full-text and evidence readiness package
+    needs: [gate1, gate2, gate3]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: NEXT80-Gate1-Routes
+          path: input/routes
+      - uses: actions/download-artifact@v4
+        with:
+          name: NEXT80-Gate2-Evidence
+          path: input/evidence
+      - uses: actions/download-artifact@v4
+        with:
+          name: NEXT80-Gate3-Extraction
+          path: input/extraction
+      - run: python srma_next80/processor.py consolidate --input input --out final_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRMA-Fulltext-Evidence-Readiness-80-Agent-Package
+          path: final_package/
+          if-no-files-found: error
+          retention-days: 30
